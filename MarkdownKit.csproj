@@ -1,0 +1,112 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{7C4E9A21-3B6D-4F58-9E2A-5D1C8B3F6A74}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <RootNamespace>MarkdownKit</RootNamespace>
+    <AssemblyName>MarkdownKit</AssemblyName>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <!-- WPF 类库：没有 XAML，只引用 Presentation 三件套 -->
+    <ProjectTypeGuids>{60dc8134-eba5-43b8-bcc9-bb4bc16c2548};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
+    <WarningLevel>4</WarningLevel>
+    <Deterministic>true</Deterministic>
+    <LangVersion>7.3</LangVersion>
+    <TargetFrameworkProfile />
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Xml" />
+    <Reference Include="System.Xaml">
+      <RequiredTargetFramework>4.0</RequiredTargetFramework>
+    </Reference>
+    <Reference Include="WindowsBase" />
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
+    <!-- 代码块的「复制」按钮 -->
+    <Reference Include="System.Windows.Forms" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="BrokenImageIcon.cs" />
+    <Compile Include="Formula/FormulaElement.cs" />
+    <Compile Include="Formula/FormulaRenderer.cs" />
+    <Compile Include="ImageWidthAttribute.cs" />
+    <Compile Include="MarkdownAssets.cs" />
+    <Compile Include="MarkdownImage.cs" />
+    <Compile Include="MarkdownPalette.cs" />
+    <Compile Include="MarkdownRenderer.cs" />
+    <Compile Include="MarkdownResources.cs" />
+    <Compile Include="MarkdownStyle.cs" />
+    <Compile Include="MarkdownTheme.cs" />
+    <Compile Include="Mermaid/MermaidFlowchart.cs" />
+    <Compile Include="Mermaid/MermaidFlowchartView.cs" />
+    <Compile Include="Mermaid/MermaidRenderer.cs" />
+    <Compile Include="Mermaid/MermaidSequenceParser.cs" />
+    <Compile Include="PlantUml/ActivityLayout.cs" />
+    <Compile Include="PlantUml/ActivityModel.cs" />
+    <Compile Include="PlantUml/ActivityParser.cs" />
+    <Compile Include="PlantUml/ActivityView.cs" />
+    <Compile Include="PlantUml/ClassParser.cs" />
+    <Compile Include="PlantUml/ComponentLayout.cs" />
+    <Compile Include="PlantUml/ComponentModel.cs" />
+    <Compile Include="PlantUml/ComponentParser.cs" />
+    <Compile Include="PlantUml/ComponentView.cs" />
+    <Compile Include="PlantUml/GanttLayout.cs" />
+    <Compile Include="PlantUml/GanttParser.cs" />
+    <Compile Include="PlantUml/GanttView.cs" />
+    <Compile Include="PlantUml/LegendBox.cs" />
+    <Compile Include="PlantUml/PlantUmlPreprocessor.cs" />
+    <Compile Include="PlantUml/PlantUmlRenderer.cs" />
+    <Compile Include="PlantUml/PlantUmlSequenceView.cs" />
+    <Compile Include="PlantUml/SequenceLayout.cs" />
+    <Compile Include="PlantUml/SequenceModel.cs" />
+    <Compile Include="PlantUml/SequenceParser.cs" />
+    <Compile Include="PlantUml/StateLayout.cs" />
+    <Compile Include="PlantUml/StateModel.cs" />
+    <Compile Include="PlantUml/StateParser.cs" />
+    <Compile Include="PlantUml/StateView.cs" />
+    <Compile Include="PlantUml/TreeLayout.cs" />
+    <Compile Include="PlantUml/TreeModel.cs" />
+    <Compile Include="PlantUml/TreeParser.cs" />
+    <Compile Include="PlantUml/TreeView.cs" />
+    <Compile Include="SyntaxHighlighter.cs" />
+    <Compile Include="WikiLink.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Markdown 解析 -->
+    <PackageReference Include="Markdig">
+      <Version>0.37.0</Version>
+    </PackageReference>
+    <!-- 预览区的 LaTeX 数学公式排版 -->
+    <PackageReference Include="WpfMath">
+      <Version>2.1.0</Version>
+    </PackageReference>
+    <!-- 通过 NuGet 提供 .NET Framework 4.7.2 引用程序集，免装 Developer Pack -->
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies">
+      <Version>1.0.3</Version>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>
