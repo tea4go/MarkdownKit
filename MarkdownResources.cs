@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Net.Security;
 
 namespace MarkdownKit
 {
@@ -34,8 +35,8 @@ namespace MarkdownKit
         /// <summary>按图片地址决定是否带认证、是否改写地址。null 表示全部匿名原样下载。</summary>
         public static Func<string, MarkdownImageRequest> ResolveImage;
 
-        /// <summary>判断某个请求是否接受坏证书（如自签名 WebDAV）。null 表示一律按系统规则校验。</summary>
-        public static Func<HttpWebRequest, bool> AcceptCertificate;
+        /// <summary>下载网络图片时的证书校验回调。null 表示按系统规则校验。</summary>
+        public static RemoteCertificateValidationCallback AcceptCertificate;
 
         public static string T(string key)
         {

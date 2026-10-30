@@ -2674,8 +2674,7 @@ namespace MarkdownKit
                         http.Headers[HttpRequestHeader.Authorization] = Authorization;
                     // 自签名 WebDAV 服务器：是否放宽证书由宿主决定
                     if (MarkdownResources.AcceptCertificate != null)
-                        http.ServerCertificateValidationCallback = (sender, cert, chain, errors) =>
-                            MarkdownResources.AcceptCertificate(http);
+                        http.ServerCertificateValidationCallback = MarkdownResources.AcceptCertificate;
                 }
                 return request;
             }
