@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using Markdig.Helpers;
 using Markdig.Syntax;
@@ -54,18 +55,26 @@ namespace MarkdownKit
 
         private static void ApplyInlines(ContainerInline container)
         {
+            // 先把图片都收齐再处理：摘标记会把字面量节点从链上删掉，而 Remove 会清空
+            // 被删节点的 NextSibling，边走边删的话后面同级的图片就跟丢了
+            var images = new List<LinkInline>();
+            CollectImages(container, images);
+            foreach (LinkInline image in images)
+                ApplyWidth(image);
+        }
+
+        private static void CollectImages(ContainerInline container, List<LinkInline> images)
+        {
             Inline inline = container.FirstChild;
             while (inline != null)
             {
-                // 下面可能把这条链上的字面量改掉，先记下下一个再动
-                Inline next = inline.NextSibling;
                 var nested = inline as ContainerInline;
                 if (nested != null)
-                    ApplyInlines(nested);
+                    CollectImages(nested, images);
                 var image = inline as LinkInline;
                 if (image != null && image.IsImage)
-                    ApplyWidth(image);
-                inline = next;
+                    images.Add(image);
+                inline = inline.NextSibling;
             }
         }
 
