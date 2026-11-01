@@ -14,6 +14,12 @@ namespace MarkdownKit
         /// <summary>两侧要扣掉的宽度：预览区左右内边距加竖直滚动条，留出富余免得撑出横向滚动。</summary>
         private const double SideMargin = 40;
 
+        /// <summary>手机与平板的分界（预览区内容宽度的物理英寸数）。</summary>
+        private const double PhoneMaxInches = 7;
+
+        /// <summary>平板与 2in1 电脑的分界。</summary>
+        private const double PadMaxInches = 14;
+
         /// <summary>预览区的可用宽度，渲染时写入并随窗口缩放由绑定刷新。</summary>
         public static readonly DependencyProperty AvailableWidthProperty =
             DependencyProperty.Register(nameof(AvailableWidth), typeof(double), typeof(MarkdownImage),
@@ -40,6 +46,39 @@ namespace MarkdownKit
             set { SetValue(WidthRatioProperty, value); }
         }
 
+        /// <summary>手机档比例，NaN 表示没写这一档。</summary>
+        public static readonly DependencyProperty PhoneWidthRatioProperty =
+            DependencyProperty.Register(nameof(PhoneWidthRatio), typeof(double), typeof(MarkdownImage),
+                new FrameworkPropertyMetadata(double.NaN, FrameworkPropertyMetadataOptions.AffectsMeasure));
+
+        /// <summary>平板档比例，NaN 表示没写这一档。</summary>
+        public static readonly DependencyProperty PadWidthRatioProperty =
+            DependencyProperty.Register(nameof(PadWidthRatio), typeof(double), typeof(MarkdownImage),
+                new FrameworkPropertyMetadata(double.NaN, FrameworkPropertyMetadataOptions.AffectsMeasure));
+
+        /// <summary>2in1 电脑档比例，NaN 表示没写这一档。</summary>
+        public static readonly DependencyProperty PcWidthRatioProperty =
+            DependencyProperty.Register(nameof(PcWidthRatio), typeof(double), typeof(MarkdownImage),
+                new FrameworkPropertyMetadata(double.NaN, FrameworkPropertyMetadataOptions.AffectsMeasure));
+
+        public double PhoneWidthRatio
+        {
+            get { return (double)GetValue(PhoneWidthRatioProperty); }
+            set { SetValue(PhoneWidthRatioProperty, value); }
+        }
+
+        public double PadWidthRatio
+        {
+            get { return (double)GetValue(PadWidthRatioProperty); }
+            set { SetValue(PadWidthRatioProperty, value); }
+        }
+
+        public double PcWidthRatio
+        {
+            get { return (double)GetValue(PcWidthRatioProperty); }
+            set { SetValue(PcWidthRatioProperty, value); }
+        }
+
         protected override Size MeasureOverride(Size availableSize)
         {
             // 以无限约束量一次，拿到图片的原始尺寸，不受父级给的宽度左右。
@@ -53,14 +92,34 @@ namespace MarkdownKit
                 limit = availableSize.Width;
             if (!double.IsInfinity(AvailableWidth))
                 limit = Math.Min(limit, Math.Max(0, AvailableWidth - SideMargin));
-            // 作者指定了百分比就再收一道：上限按比例缩，高度跟着等比走
-            if (WidthRatio < 1)
-                limit *= Math.Max(0, WidthRatio);
+            // 有设备档位就按内容宽度的物理英寸选档；没写的档回退到 width（默认占满）
+            double ratio = DeviceWidthRatio(limit);
+            if (double.IsNaN(ratio))
+                ratio = WidthRatio;
+            if (ratio < 1)
+                limit *= Math.Max(0, ratio);
 
             // 放得下就原样，放不下才等比缩到上限
             if (double.IsInfinity(limit) || natural.Width <= limit)
                 return natural;
             return new Size(limit, natural.Height * limit / natural.Width);
+        }
+
+        /// <summary>
+        /// 按内容宽度的物理英寸数挑档：小于 7 英寸算手机，7~14 英寸算平板，14 英寸以上算 2in1 电脑。
+        /// WPF 的 DIP 以 1/96 英寸定义，DPI 缩放已经包含在换算里，所以 DIP / 96 就是物理英寸。
+        /// 返回 NaN 表示这一档没写，或量不出宽度，由调用方回退到 WidthRatio。
+        /// </summary>
+        private double DeviceWidthRatio(double contentWidth)
+        {
+            if (double.IsInfinity(contentWidth) || contentWidth <= 0)
+                return double.NaN;
+            double inches = contentWidth / 96.0;
+            if (inches < PhoneMaxInches)
+                return PhoneWidthRatio;
+            if (inches < PadMaxInches)
+                return PadWidthRatio;
+            return PcWidthRatio;
         }
     }
 }

@@ -8,8 +8,11 @@ using Markdig.Syntax.Inlines;
 namespace MarkdownKit
 {
     /// <summary>
-    /// 图片宽度标记：`![说明](图.jpg){width=50%}`——按预览区宽度的百分比给这张图封顶，
-    /// 高度按原图比例跟着缩；原图本身比这个上限还小就保持原尺寸，不放大。
+    /// 图片宽度标记。两种写法：
+    /// 1. 旧的裸标记 `![说明](图.jpg){width=50%}`，按预览区宽度的百分比封顶；
+    /// 2. HTML 注释 `![说明](图.jpg)&lt;!--{width=50% phone_width=80% pad_width=30% pc_width=10%}--&gt;`，
+    ///    一次给出多档宽度，渲染时按预览区物理宽度选档。注释在别的 Markdown 渲染器里本来就不显示，
+    ///    所以不认这套语法的宿主也不会把花括号当正文露出来。
     ///
     /// 解析放在 Markdig 出完语法树之后自己走一遍，没有往管线里塞内联解析器：
     /// 这个标记只在「图片后面紧跟着」这一种位置有意义，走一遍只认这一个位置，
@@ -17,8 +20,24 @@ namespace MarkdownKit
     /// </summary>
     internal static class ImageWidthAttribute
     {
-        /// <summary>挂在图片节点上的键，值是比例（0.5 表示 50%）。挂在树上而不是另开一张表，图片删了它自然也没了。</summary>
+        /// <summary>挂在图片节点上的键，值是 <see cref="ImageWidthSpec"/>。挂在树上而不是另开一张表，图片删了它自然也没了。</summary>
         private static readonly object Key = new object();
+
+        /// <summary>一张图的多档宽度比例；null 表示这一档没写。比例都换算成 0~1。</summary>
+        internal sealed class ImageWidthSpec
+        {
+            /// <summary>旧的 `width`：没有对应设备档位时用它兜底。</summary>
+            public double? Width;
+
+            /// <summary>手机档（预览区内容宽度 &lt; 7 英寸）。</summary>
+            public double? Phone;
+
+            /// <summary>平板档（7~14 英寸）。</summary>
+            public double? Pad;
+
+            /// <summary>2in1 电脑档（&gt;= 14 英寸）。</summary>
+            public double? Pc;
+        }
 
         /// <summary>把全文的宽度标记摘下来，挂到对应的图片节点上，并从正文里删掉这段文字。</summary>
         public static void Apply(MarkdownDocument document)
@@ -29,14 +48,14 @@ namespace MarkdownKit
                 ApplyBlock(block);
         }
 
-        /// <summary>取这张图指定的宽度比例；没写标记返回 false，ratio 置 1（占满可用宽度）。</summary>
-        public static bool TryGetWidthRatio(LinkInline image, out double ratio)
+        /// <summary>取这张图指定的各档宽度；没写标记返回 false。</summary>
+        public static bool TryGetWidthSpec(LinkInline image, out ImageWidthSpec spec)
         {
-            ratio = 1;
+            spec = null;
             if (image == null || !image.ContainsData(Key))
                 return false;
-            ratio = (double)image.GetData(Key);
-            return true;
+            spec = (ImageWidthSpec)image.GetData(Key);
+            return spec != null;
         }
 
         private static void ApplyBlock(Block block)
@@ -96,6 +115,22 @@ namespace MarkdownKit
                 next = lineBreak.NextSibling;
             }
 
+            // 新写法：<!--{width=50% phone_width=80% pad_width=30% pc_width=10%}-->
+            // Markdig 把整段注释收成一个 HtmlInline，内容在 Tag 里
+            var html = next as HtmlInline;
+            if (html != null)
+            {
+                ImageWidthSpec commentSpec;
+                if (!TryReadComment(html.Tag, out commentSpec))
+                    return;
+                html.Remove();
+                if (softBreak != null)
+                    softBreak.Remove();
+                image.SetData(Key, commentSpec);
+                return;
+            }
+
+            // 旧写法：{width=50%}
             var literal = next as LiteralInline;
             if (literal == null)
                 return;
@@ -115,7 +150,101 @@ namespace MarkdownKit
             // 标记独占一行时，把那个换行也撤掉，免得图片后面多出一行空白
             if (softBreak != null)
                 softBreak.Remove();
-            image.SetData(Key, ratio);
+            var spec = new ImageWidthSpec { Width = ratio };
+            image.SetData(Key, spec);
+        }
+
+        /// <summary>
+        /// 从整段 HTML 注释里认 `&lt;!--{width=50% phone_width=80% pad_width=30% pc_width=10%}--&gt;`。
+        /// 只认「花括号包住、至少有一个已知键」的注释；普通 HTML 注释原样留着。
+        /// </summary>
+        private static bool TryReadComment(string tag, out ImageWidthSpec spec)
+        {
+            spec = null;
+            if (tag == null)
+                return false;
+
+            string text = tag.Trim();
+            const string open = "<!--";
+            const string close = "-->";
+            if (!text.StartsWith(open, StringComparison.Ordinal) || !text.EndsWith(close, StringComparison.Ordinal))
+                return false;
+
+            string inner = text.Substring(open.Length, text.Length - open.Length - close.Length).Trim();
+            if (inner.Length < 2 || inner[0] != '{' || inner[inner.Length - 1] != '}')
+                return false;
+            inner = inner.Substring(1, inner.Length - 2);
+
+            var result = new ImageWidthSpec();
+            bool any = false;
+            int i = 0;
+            while (i < inner.Length)
+            {
+                while (i < inner.Length && char.IsWhiteSpace(inner[i]))
+                    i++;
+                int start = i;
+                while (i < inner.Length && !char.IsWhiteSpace(inner[i]))
+                    i++;
+                if (start == i)
+                    break;
+
+                string name;
+                double ratio;
+                if (!TryReadKeyValue(inner.Substring(start, i - start), out name, out ratio))
+                    continue;
+
+                switch (name)
+                {
+                    case "width":
+                        result.Width = ratio;
+                        break;
+                    case "phone_width":
+                        result.Phone = ratio;
+                        break;
+                    case "pad_width":
+                        result.Pad = ratio;
+                        break;
+                    case "pc_width":
+                        result.Pc = ratio;
+                        break;
+                    default:
+                        continue;
+                }
+                any = true;
+            }
+
+            if (!any)
+                return false;
+            spec = result;
+            return true;
+        }
+
+        /// <summary>认一个 `键=百分比` 的片段；键名统一小写、中划线换成下划线。</summary>
+        private static bool TryReadKeyValue(string token, out string name, out double ratio)
+        {
+            name = null;
+            ratio = 1;
+            int eq = token.IndexOf('=');
+            if (eq <= 0 || eq >= token.Length - 1)
+                return false;
+
+            string key = token.Substring(0, eq).Trim();
+            string value = token.Substring(eq + 1).Trim();
+            if (key.Length == 0 || value.Length < 2 || value[value.Length - 1] != '%')
+                return false;
+
+            double number;
+            if (!double.TryParse(value.Substring(0, value.Length - 1),
+                    NumberStyles.Float, CultureInfo.InvariantCulture, out number))
+                return false;
+
+            number = number / 100.0;
+            if (number <= 0)
+                return false;
+
+            ratio = Math.Min(1.0, number);
+            name = key.Replace('-', '_').ToLowerInvariant();
+            return true;
         }
 
         /// <summary>

@@ -2598,10 +2598,17 @@ namespace MarkdownKit
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Source = local
             };
-            // `{width=50%}` 这类标记在解析后被摘下挂在图片节点上，这里取来当宽度上限
-            double ratio;
-            if (ImageWidthAttribute.TryGetWidthRatio(link, out ratio))
-                image.WidthRatio = ratio;
+            // `{width=50%}` / `<!--{phone_width=80% pad_width=30% pc_width=10%}-->` 这类标记
+            // 在解析后被摘下挂在图片节点上，这里取来当宽度上限
+            ImageWidthAttribute.ImageWidthSpec widthSpec;
+            if (ImageWidthAttribute.TryGetWidthSpec(link, out widthSpec))
+            {
+                if (widthSpec.Width.HasValue)
+                    image.WidthRatio = widthSpec.Width.Value;
+                image.PhoneWidthRatio = widthSpec.Phone ?? double.NaN;
+                image.PadWidthRatio = widthSpec.Pad ?? double.NaN;
+                image.PcWidthRatio = widthSpec.Pc ?? double.NaN;
+            }
             if (!string.IsNullOrEmpty(alt))
                 image.ToolTip = alt;
             FollowImageHost(image, MarkdownImage.AvailableWidthProperty);
