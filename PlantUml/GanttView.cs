@@ -228,9 +228,9 @@ namespace MarkdownKit.PlantUml
                 if (prev == null)
                     continue;
 
-                // 从上一环条的下方绕到下一环的左侧：起点从条尾往左让出半格，
-                // 相邻两环才拐得开弯，箭头从左侧进条
-                double busY = bar.Bottom;
+                // 从上一环条的下方绕到下一环左侧的中线：起点从条尾往左让出半格，
+                // 相邻两环才拐得开弯，箭头从左侧居中进条
+                double busY = bar.Top + bar.Height / 2;
                 double x0 = prev.Bar.Right - _layout.DayWidth * 0.5;
                 double x1 = bar.X;
                 var geo = new StreamGeometry();
