@@ -33,11 +33,9 @@ namespace MarkdownKit.PlantUml
         private double _scale = 1;
 
         private readonly Brush _fill;
-        private readonly Brush _keyFill;
         private readonly Brush _border;
         private readonly Pen _borderPen;
         private readonly Pen _linePen;
-        private readonly Pen _dashPen;
 
         public static readonly DependencyProperty AvailableWidthProperty =
             DependencyProperty.Register(nameof(AvailableWidth), typeof(double), typeof(TreeView),
@@ -57,12 +55,10 @@ namespace MarkdownKit.PlantUml
             HorizontalAlignment = HorizontalAlignment.Center;
 
             _fill = MarkdownTheme.Background;
-            _keyFill = MarkdownTheme.Markdown.CodeBackground;
             _border = MarkdownTheme.Markdown.Text;
 
             _borderPen = Frozen(new Pen(_border, 1.2));
             _linePen = Frozen(new Pen(_border, 1.2));
-            _dashPen = Frozen(new Pen(_border, 1.2) { DashStyle = DashStyles.Dot });
 
             if (host != null)
             {
@@ -191,7 +187,8 @@ namespace MarkdownKit.PlantUml
             }
 
             bool table = _layout.Kind == TreeKind.Json || _layout.Kind == TreeKind.Yaml;
-            Pen pen = table ? _dashPen : _linePen;
+            Pen pen = table ? _layout.EdgePen : _linePen;
+            Brush arrowFill = table ? _layout.EdgeBrush : _border;
             foreach (TreeEdgeGeom edge in _layout.Edges)
             {
                 Point from = edge.From;
@@ -206,11 +203,11 @@ namespace MarkdownKit.PlantUml
                 geo.Freeze();
                 dc.DrawGeometry(null, pen, geo);
                 if (table)
-                    DrawArrowHead(dc, to, from, pen);
+                    DrawArrowHead(dc, to, from, pen, arrowFill);
             }
         }
 
-        private void DrawArrowHead(DrawingContext dc, Point tip, Point from, Pen pen)
+        private void DrawArrowHead(DrawingContext dc, Point tip, Point from, Pen pen, Brush fill)
         {
             double dx = tip.X - from.X;
             double dy = tip.Y - from.Y;
@@ -231,28 +228,46 @@ namespace MarkdownKit.PlantUml
                 ctx.LineTo(new Point(tip.X - ux * s - px * half, tip.Y - uy * s - py * half), true, false);
             }
             tri.Freeze();
-            dc.DrawGeometry(_border, pen, tri);
+            dc.DrawGeometry(fill, pen, tri);
         }
 
         // ── 节点 ────────────────────────────────────────────────
 
-        /// <summary>JSON / YAML：一个对象一张表，先铺底色和竖线，再画格线和文字。</summary>
+        /// <summary>JSON / YAML：一个对象一张表，先铺底色和竖线，再画高亮行、格线和文字。</summary>
         private void DrawTables(DrawingContext dc)
         {
-            double corner = U(4);
+            TreeTableStyle style = _layout.Table;
+            if (style == null)
+                return;
+
+            double corner = style.Corner;
             foreach (TreeGeom table in _layout.Nodes)
             {
                 Rect r = table.Rect;
-                dc.DrawRoundedRectangle(_fill, _borderPen, r, corner, corner);
-                dc.DrawRectangle(_keyFill, null, new Rect(r.X, r.Y, table.KeyW, r.Height));
-                dc.DrawRoundedRectangle(null, _borderPen, r, corner, corner);
-                dc.DrawLine(_borderPen, new Point(r.X + table.KeyW, r.Top), new Point(r.X + table.KeyW, r.Bottom));
+                dc.DrawRoundedRectangle(style.Fill, style.Border, r, corner, corner);
+                dc.DrawRectangle(style.KeyFill, null, new Rect(r.X, r.Y, table.KeyW, r.Height));
+                dc.DrawRoundedRectangle(null, style.Border, r, corner, corner);
+                dc.DrawLine(style.Border, new Point(r.X + table.KeyW, r.Top), new Point(r.X + table.KeyW, r.Bottom));
             }
+
+            // 高亮铺在整行（键格 + 值格）下面：官方也是整行换底色
+            double highlightCorner = U(4);
+            foreach (TreeGeom row in _layout.Rows)
+            {
+                if (row.RowBackground == null)
+                    continue;
+                Rect r = row.Rect;
+                dc.DrawRoundedRectangle(row.RowBackground, null,
+                    new Rect(r.X + 1.5, r.Y, Math.Max(0, r.Width - 3), r.Height),
+                    highlightCorner, highlightCorner);
+            }
+
             foreach (TreeGeom row in _layout.Rows)
             {
                 Rect r = row.Rect;
-                dc.DrawLine(_borderPen, new Point(r.X, r.Bottom), new Point(r.Right, r.Bottom));
+                dc.DrawLine(style.Separator, new Point(r.X, r.Bottom), new Point(r.Right, r.Bottom));
             }
+
             double padX = U(8);
             foreach (TreeGeom row in _layout.Rows)
             {

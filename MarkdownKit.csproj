@@ -89,6 +89,7 @@
     <Compile Include="PlantUml/TreeLayout.cs" />
     <Compile Include="PlantUml/TreeModel.cs" />
     <Compile Include="PlantUml/TreeParser.cs" />
+    <Compile Include="PlantUml/TreeStyle.cs" />
     <Compile Include="PlantUml/TreeView.cs" />
     <Compile Include="PlantUml/StructuredTreeCheck.cs" />
     <Compile Include="SyntaxHighlighter.cs" />

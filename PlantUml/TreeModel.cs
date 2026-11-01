@@ -68,6 +68,12 @@ namespace MarkdownKit.PlantUml
         /// <summary>根节点。mindmap / wbs 只有一个；JSON / YAML 顶层是对象时也只有一个。</summary>
         public readonly List<TreeNode> Roots = new List<TreeNode>();
 
+        /// <summary>`#highlight "a" / "b"` 规则，按路径在表格行上匹配。</summary>
+        public readonly List<TreeHighlightRule> Highlights = new List<TreeHighlightRule>();
+
+        /// <summary>`<style>` 里的全局样式与 `.类名` 样式。</summary>
+        public readonly TreeStyleSheet Styles = new TreeStyleSheet();
+
         /// <summary>像不像一张能画的树形图。</summary>
         public bool LooksLikeTree
         {

@@ -19,6 +19,32 @@ namespace MarkdownKit.PlantUml
 
         /// <summary>JSON / YAML 的键列宽度（含内边距），用来画中间那道竖线。</summary>
         public double KeyW;
+
+        /// <summary>命中的高亮行底色；未高亮是 null。</summary>
+        public Brush RowBackground;
+
+        /// <summary>键格 / 值格的字体、字号、文字色。</summary>
+        public TreeCellStyle KeyCell;
+        public TreeCellStyle ValueCell;
+    }
+
+    /// <summary>一个格子的最终文字样式。</summary>
+    internal sealed class TreeCellStyle
+    {
+        public Typeface Typeface;
+        public double FontSize;
+        public Brush TextColor;
+        public bool Underline;
+    }
+
+    /// <summary>JSON / YAML 表格的最终外观。</summary>
+    internal sealed class TreeTableStyle
+    {
+        public Brush Fill;
+        public Brush KeyFill;
+        public Pen Border;
+        public double Corner;
+        public Pen Separator;
     }
 
     /// <summary>父子之间的一条连线，From/To 已落在两个框的边界上。</summary>
@@ -45,6 +71,13 @@ namespace MarkdownKit.PlantUml
         public readonly List<TreeGeom> Rows = new List<TreeGeom>();
 
         public readonly List<TreeEdgeGeom> Edges = new List<TreeEdgeGeom>();
+
+        /// <summary>JSON / YAML 表格的外观；其它图型为 null。</summary>
+        public TreeTableStyle Table;
+
+        /// <summary>JSON / YAML 表格之间连线的画笔与颜色。</summary>
+        public Pen EdgePen;
+        public Brush EdgeBrush;
     }
 
     /// <summary>
@@ -69,9 +102,16 @@ namespace MarkdownKit.PlantUml
             private readonly Typeface _tf;
             private readonly Typeface _tfBold;
             private readonly Brush _text;
+            private readonly Brush _defaultFill;
+            private readonly Brush _defaultKeyFill;
+            private readonly Brush _defaultBorder;
+            private readonly TreeStyleSheet _styles;
             private readonly TreeLayout _layout = new TreeLayout();
             private readonly Dictionary<TreeNode, TreeGeom> _geoms = new Dictionary<TreeNode, TreeGeom>();
             private readonly Dictionary<TreeNode, TreeGeom> _rowGeoms = new Dictionary<TreeNode, TreeGeom>();
+
+            /// <summary>官方 skin 里 yamlDiagram / jsonDiagram 的 highlight 默认底色。</summary>
+            private static readonly Brush DefaultHighlight = CreateDefaultHighlight();
 
             /// <summary>JSON / YAML 键、值文字的最大宽度；超过就折行。PositiveInfinity 表示不限。</summary>
             private readonly double _maxKeyWidth;
@@ -119,8 +159,19 @@ namespace MarkdownKit.PlantUml
                 _tf = new Typeface(MarkdownTheme.DiagramFamily, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
                 _tfBold = MarkdownTheme.BoldTypeface(MarkdownTheme.DiagramFamily);
                 _text = MarkdownTheme.Markdown.Text;
+                _defaultFill = MarkdownTheme.Background;
+                _defaultKeyFill = MarkdownTheme.Markdown.CodeBackground;
+                _defaultBorder = MarkdownTheme.Markdown.Text;
+                _styles = diagram.Styles;
                 _maxKeyWidth = Cap(maxKeyTextWidth);
                 _maxValueWidth = Cap(maxValueTextWidth);
+            }
+
+            private static Brush CreateDefaultHighlight()
+            {
+                var brush = new SolidColorBrush(Color.FromRgb(0xCC, 0xFF, 0x02));
+                brush.Freeze();
+                return brush;
             }
 
             /// <summary>非正数 / NaN / 无穷大一律当不限制宽度。</summary>
@@ -147,8 +198,10 @@ namespace MarkdownKit.PlantUml
 
                 if (IsTable)
                 {
+                    _layout.Table = BuildTableStyle();
+                    _layout.EdgePen = BuildEdgePen(out _layout.EdgeBrush);
                     foreach (TreeNode root in _diagram.Roots)
-                        MeasureTable(root);
+                        MeasureTable(root, _diagram.Highlights);
                     double cursor = 0;
                     foreach (TreeNode root in _diagram.Roots)
                     {
@@ -317,7 +370,161 @@ namespace MarkdownKit.PlantUml
 
             // ── 表格式（JSON / YAML）──────────────────────────────
 
-            private void MeasureTable(TreeNode table)
+            private TreeTableStyle BuildTableStyle()
+            {
+                Brush border = _styles.Node.LineColor ?? _defaultBorder;
+                Brush separator = _styles.Separator.LineColor ?? border;
+                return new TreeTableStyle
+                {
+                    Fill = _styles.Node.Background ?? _defaultFill,
+                    KeyFill = _styles.Node.Background ?? _defaultKeyFill,
+                    Border = MakePen(border, _styles.Node.LineThickness ?? 1.2, _styles.Node.Dash),
+                    Corner = _styles.Node.RoundCorner.HasValue
+                        ? U(_styles.Node.RoundCorner.Value)
+                        : U(4),
+                    Separator = MakePen(separator, _styles.Separator.LineThickness ?? 1.2,
+                        _styles.Separator.Dash)
+                };
+            }
+
+            private Pen BuildEdgePen(out Brush edgeBrush)
+            {
+                edgeBrush = _styles.Arrow.LineColor ?? _defaultBorder;
+                double thickness = _styles.Arrow.LineThickness ?? 1.2;
+                if (_styles.Arrow.Dash == null)
+                {
+                    var dotted = new Pen(edgeBrush, thickness) { DashStyle = DashStyles.Dot };
+                    dotted.Freeze();
+                    return dotted;
+                }
+                return MakePen(edgeBrush, thickness, _styles.Arrow.Dash);
+            }
+
+            private static Pen MakePen(Brush brush, double thickness, double[] dash)
+            {
+                var pen = new Pen(brush, thickness);
+                if (dash != null && dash.Length == 2 && dash[0] > 0)
+                {
+                    // WPF 的 Dash 单位是线宽的倍数，官方 LineStyle 写的是像素
+                    double unit = Math.Max(thickness, 0.1);
+                    pen.DashStyle = new DashStyle(new[] { dash[0] / unit, dash[1] / unit }, 0);
+                }
+                pen.Freeze();
+                return pen;
+            }
+
+            private static TreeHighlightRule MatchRule(string key, List<TreeHighlightRule> active)
+            {
+                if (active == null)
+                    return null;
+                foreach (TreeHighlightRule rule in active)
+                    if (rule.IsRowMatch(key))
+                        return rule;
+                return null;
+            }
+
+            private static List<TreeHighlightRule> UpOneLevel(string key, List<TreeHighlightRule> active)
+            {
+                if (active == null || active.Count == 0)
+                    return null;
+                var next = new List<TreeHighlightRule>();
+                foreach (TreeHighlightRule rule in active)
+                {
+                    TreeHighlightRule up = rule.UpOneLevel(key);
+                    if (up != null)
+                        next.Add(up);
+                }
+                return next.Count == 0 ? null : next;
+            }
+
+            /// <summary>高亮行的底色：优先 `highlight` 全局样式，再让 `<<类名>>` 覆盖。</summary>
+            private Brush ResolveRowBackground(TreeHighlightRule rule, out TreeStyleProps classProps)
+            {
+                classProps = null;
+                if (rule == null)
+                    return null;
+                Brush background = _styles.Highlight.Background;
+                if (rule.Stereotype != null)
+                {
+                    classProps = _styles.FindClass(rule.Stereotype);
+                    if (classProps != null && classProps.Background != null)
+                        background = classProps.Background;
+                }
+                return background ?? DefaultHighlight;
+            }
+
+            private TreeCellStyle ResolveCell(bool header, TreeHighlightRule rule,
+                TreeStyleProps classProps, Brush rowBackground)
+            {
+                Brush textColor = null;
+                double? fontSize = null;
+                string fontName = null;
+                TreeFontStyle? fontStyle = null;
+
+                Take(_styles.Node, ref textColor, ref fontSize, ref fontName, ref fontStyle);
+                if (header)
+                    Take(_styles.Header, ref textColor, ref fontSize, ref fontName, ref fontStyle);
+                if (rule != null)
+                {
+                    Take(_styles.Highlight, ref textColor, ref fontSize, ref fontName, ref fontStyle);
+                    Take(classProps, ref textColor, ref fontSize, ref fontName, ref fontStyle);
+                }
+
+                TreeFontStyle spec = fontStyle
+                    ?? (header ? new TreeFontStyle { Bold = true } : new TreeFontStyle());
+                Typeface typeface;
+                if (string.IsNullOrEmpty(fontName) && spec.Bold && !spec.Italic && !spec.Underline)
+                {
+                    typeface = _tfBold;
+                }
+                else
+                {
+                    string family = string.IsNullOrEmpty(fontName)
+                        ? MarkdownTheme.DiagramFamily.Source
+                        : fontName;
+                    typeface = new Typeface(new FontFamily(family),
+                        spec.Italic ? FontStyles.Italic : FontStyles.Normal,
+                        spec.Bold ? FontWeights.Bold : FontWeights.Normal,
+                        FontStretches.Normal);
+                }
+
+                return new TreeCellStyle
+                {
+                    Typeface = typeface,
+                    FontSize = fontSize ?? _fs,
+                    TextColor = textColor
+                        ?? (rowBackground != null ? ContrastText(rowBackground) : _text),
+                    Underline = spec.Underline
+                };
+            }
+
+            private static void Take(TreeStyleProps props, ref Brush textColor, ref double? fontSize,
+                ref string fontName, ref TreeFontStyle? fontStyle)
+            {
+                if (props == null)
+                    return;
+                if (props.TextColor != null)
+                    textColor = props.TextColor;
+                if (props.FontSize.HasValue)
+                    fontSize = props.FontSize;
+                if (!string.IsNullOrEmpty(props.FontName))
+                    fontName = props.FontName;
+                if (props.FontStyle.HasValue)
+                    fontStyle = props.FontStyle;
+            }
+
+            /// <summary>高亮底色没指定文字色时，按亮度自动选黑或白，深浅主题都能读。</summary>
+            private static Brush ContrastText(Brush background)
+            {
+                var solid = background as SolidColorBrush;
+                if (solid == null)
+                    return Brushes.White;
+                Color color = solid.Color;
+                double luminance = 0.299 * color.R + 0.587 * color.G + 0.114 * color.B;
+                return luminance > 140 ? Brushes.Black : Brushes.White;
+            }
+
+            private void MeasureTable(TreeNode table, List<TreeHighlightRule> active)
             {
                 double padX = U(8);
                 double keyW = 0;
@@ -325,8 +532,21 @@ namespace MarkdownKit.PlantUml
                 double tableH = 0;
                 foreach (TreeNode row in table.Rows)
                 {
-                    FormattedText key = Text(row.Text ?? "", _tfBold, _text, _maxKeyWidth);
-                    FormattedText value = Text(row.Value ?? "", _tf, _text, _maxValueWidth);
+                    TreeHighlightRule rule = MatchRule(row.Text, active);
+                    TreeStyleProps classProps;
+                    Brush rowBackground = ResolveRowBackground(rule, out classProps);
+                    TreeCellStyle keyCell = ResolveCell(true, rule, classProps, rowBackground);
+                    TreeCellStyle valueCell = ResolveCell(false, rule, classProps, rowBackground);
+
+                    FormattedText key = Text(row.Text ?? "", keyCell.Typeface, keyCell.TextColor,
+                        keyCell.FontSize, _maxKeyWidth);
+                    FormattedText value = Text(row.Value ?? "", valueCell.Typeface, valueCell.TextColor,
+                        valueCell.FontSize, _maxValueWidth);
+                    if (keyCell.Underline)
+                        key.SetTextDecorations(TextDecorations.Underline);
+                    if (valueCell.Underline)
+                        value.SetTextDecorations(TextDecorations.Underline);
+
                     // 键靠右：折行后每一行也跟着靠右，别让末行甩到左半边
                     key.TextAlignment = TextAlignment.Right;
                     keyW = Math.Max(keyW, key.Width + padX * 2);
@@ -334,9 +554,17 @@ namespace MarkdownKit.PlantUml
                     // 值里可以带换行（JSON 的 \n），行高得跟着内容长，不能一律按单行算
                     row.H = Math.Max(RowHeight, Math.Max(key.Height, value.Height) + U(4));
                     tableH += row.H;
-                    _rowGeoms[row] = new TreeGeom { Source = row, Text = key, Value = value };
+                    _rowGeoms[row] = new TreeGeom
+                    {
+                        Source = row,
+                        Text = key,
+                        Value = value,
+                        RowBackground = rowBackground,
+                        KeyCell = keyCell,
+                        ValueCell = valueCell
+                    };
                     if (row.Nested != null)
-                        MeasureTable(row.Nested);
+                        MeasureTable(row.Nested, UpOneLevel(row.Text, active));
                 }
                 keyW = Math.Max(keyW, U(20));
                 valueW = Math.Max(valueW, U(20));
@@ -415,11 +643,17 @@ namespace MarkdownKit.PlantUml
             private FormattedText Text(string text, Typeface typeface, Brush brush,
                 double maxWidth = double.PositiveInfinity)
             {
+                return Text(text, typeface, brush, _fs, maxWidth);
+            }
+
+            private FormattedText Text(string text, Typeface typeface, Brush brush, double fontSize,
+                double maxWidth)
+            {
                 string source = text ?? string.Empty;
                 if (!double.IsInfinity(maxWidth))
                     source = Breakable(source);
                 var ft = new FormattedText(source, CultureInfo.CurrentUICulture,
-                    FlowDirection.LeftToRight, typeface, _fs, brush, _ppd);
+                    FlowDirection.LeftToRight, typeface, fontSize, brush, _ppd);
                 if (!double.IsInfinity(maxWidth))
                     ft.MaxTextWidth = maxWidth;
                 return ft;

@@ -17,6 +17,10 @@ namespace MarkdownKit.PlantUml
             string[] lines = (source ?? string.Empty)
                 .Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
 
+            // JSON / YAML 的 #highlight 与 <style> 是渲染指令，不属于数据本身
+            if (kind == TreeKind.Json || kind == TreeKind.Yaml)
+                lines = TreeDirectives.Extract(lines, diagram);
+
             if (kind == TreeKind.Json)
                 new JsonReader(lines, diagram).Run();
             else if (kind == TreeKind.Yaml)
@@ -344,7 +348,7 @@ namespace MarkdownKit.PlantUml
                 var items = new List<KeyValuePair<int, string>>();
                 foreach (string raw in _lines)
                 {
-                    if (raw.Trim().Length == 0 || raw.TrimStart()[0] == '\'')
+                    if (raw.Trim().Length == 0 || raw.TrimStart()[0] == '#')
                         continue;
                     string t = raw.Trim();
                     if (t.StartsWith("@start", StringComparison.OrdinalIgnoreCase)
@@ -364,8 +368,9 @@ namespace MarkdownKit.PlantUml
 
             private static int Indent(string raw)
             {
+                // 官方把空格和制表符都算一层缩进；文档示例大量使用 Tab
                 int n = 0;
-                while (n < raw.Length && raw[n] == ' ')
+                while (n < raw.Length && (raw[n] == ' ' || raw[n] == '\t'))
                     n++;
                 return n;
             }
@@ -389,11 +394,11 @@ namespace MarkdownKit.PlantUml
                         string text = line.Length > 2 ? line.Substring(2).Trim() : "";
                         var item = new TreeNode { Text = rows.Count.ToString(), Value = text };
                         if (text.Length == 0 && index < items.Count && items[index].Key > cur)
-                            item.Nested = new TreeNode
-                            {
-                                IsTable = true,
-                                Rows = { }
-                            };
+                        {
+                            var nested = new TreeNode { IsTable = true };
+                            nested.Rows.AddRange(ParseBlock(items, ref index, items[index].Key));
+                            item.Nested = nested;
+                        }
                         rows.Add(item);
                         continue;
                     }
