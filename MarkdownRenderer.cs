@@ -10,6 +10,7 @@ using System.Text;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Input;
@@ -899,6 +900,19 @@ namespace MarkdownKit
             var paragraph = new Paragraph { Margin = new Thickness(0) };
             Highlight(paragraph.Inlines, code, FenceLanguage(source));
 
+            var document = new FlowDocument(paragraph)
+            {
+                FontFamily = MarkdownTheme.EditorFamily,
+                FontSize = fontSize * 0.95,
+                Foreground = MarkdownTheme.Markdown.Text,
+                // 不设的话 FlowDocument 默认 400 宽，会把代码排成好几栏
+                ColumnWidth = double.PositiveInfinity,
+                PagePadding = new Thickness(0)
+            };
+            // FlowDocument 没有“不折行”开关：页宽给多少就在哪儿断行。这里按最长一行量出页宽钉死，
+            // 超出可视宽度的部分交给横向滚动条。
+            document.PageWidth = CodePageWidth(code, document.FontSize);
+
             var text = new RichTextBox
             {
                 IsReadOnly = true,
@@ -911,17 +925,24 @@ namespace MarkdownKit
                 // 起始位置对齐；点开行号后由 LineNumberButton 把这里清成 0（行号自己带 5px 边距）
                 Margin = new Thickness(5, 0, 0, 0),
                 VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                Document = new FlowDocument(paragraph)
-                {
-                    FontFamily = MarkdownTheme.EditorFamily,
-                    FontSize = fontSize * 0.95,
-                    Foreground = MarkdownTheme.Markdown.Text,
-                    // 不设的话 FlowDocument 默认 400 宽，会把代码排成好几栏
-                    ColumnWidth = double.PositiveInfinity,
-                    PagePadding = new Thickness(0)
-                }
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Document = document
             };
+
+            // 滚动条平时隐形，鼠标进到这个代码块上才浮现；挂个只作用于自家滚动条的隐式样式，
+            // 用透明度而不是 Visibility，免得显隐时把内容宽度挤一下
+            var scrollBarStyle = new Style(typeof(ScrollBar));
+            var scrollBarIdle = new DataTrigger
+            {
+                Binding = new Binding("IsMouseOver")
+                {
+                    RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(RichTextBox), 1)
+                },
+                Value = false
+            };
+            scrollBarIdle.Setters.Add(new Setter(UIElement.OpacityProperty, 0.0));
+            scrollBarStyle.Triggers.Add(scrollBarIdle);
+            text.Resources.Add(typeof(ScrollBar), scrollBarStyle);
 
             // 行号列：默认收起，点右上角那个「行号」按钮才显示。单独占一列而不是塞进代码里，
             // 这样在预览里手动选中复制拿到的仍然只有代码。
@@ -975,6 +996,33 @@ namespace MarkdownKit
                 Margin = new Thickness(0, 0, 0, fontSize * 0.5),
                 Child = content
             });
+        }
+
+        /// <summary>
+        /// 代码块按多宽排：量出最长一行（含行尾空白）的宽度，再留一个字号的余量。
+        /// 页宽小于它会被折行，大于它就没必要——滚动条的范围也是按这个宽度算的。
+        /// </summary>
+        private static double CodePageWidth(string code, double fontSize)
+        {
+            var typeface = new Typeface(MarkdownTheme.EditorFamily,
+                FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
+            double widest = 0;
+            int start = 0;
+            for (int i = 0; i <= code.Length; i++)
+            {
+                if (i < code.Length && code[i] != '\n' && code[i] != '\r')
+                    continue;
+                if (i > start)
+                {
+                    string line = code.Substring(start, i - start);
+                    var formatted = new FormattedText(line, CultureInfo.CurrentUICulture,
+                        FlowDirection.LeftToRight, typeface, fontSize, Brushes.Black, 1.0);
+                    if (formatted.WidthIncludingTrailingWhitespace > widest)
+                        widest = formatted.WidthIncludingTrailingWhitespace;
+                }
+                start = i + 1;
+            }
+            return Math.Ceiling(widest + fontSize);
         }
 
         /// <summary>围栏上的语言标识（```python 里的 python）。缩进式代码块没有，返回 null。</summary>
