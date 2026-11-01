@@ -34,6 +34,9 @@ namespace MarkdownKit.Mermaid
         public string To;
         public string Label;
         public bool Dashed;
+
+        /// <summary>回边（DFS 里指向栈上祖先的边）。分层时跳过，绘线时从侧面绕行。</summary>
+        public bool Back;
     }
 
     /// <summary>一张流程图：方向 + 节点（按首次出现排）+ 连线。</summary>
