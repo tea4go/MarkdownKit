@@ -247,7 +247,6 @@ namespace MarkdownKit.PlantUml
                 dc.DrawRoundedRectangle(style.Fill, style.Border, r, corner, corner);
                 dc.DrawRectangle(style.KeyFill, null, new Rect(r.X, r.Y, table.KeyW, r.Height));
                 dc.DrawRoundedRectangle(null, style.Border, r, corner, corner);
-                dc.DrawLine(style.Border, new Point(r.X + table.KeyW, r.Top), new Point(r.X + table.KeyW, r.Bottom));
             }
 
             // 高亮铺在整行（键格 + 值格）下面：官方也是整行换底色
@@ -260,6 +259,13 @@ namespace MarkdownKit.PlantUml
                 dc.DrawRoundedRectangle(row.RowBackground, null,
                     new Rect(r.X + 1.5, r.Y, Math.Max(0, r.Width - 3), r.Height),
                     highlightCorner, highlightCorner);
+            }
+
+            // 竖线必须压在高亮底色之上，否则高亮行整行铺色会把键值分隔线盖掉
+            foreach (TreeGeom table in _layout.Nodes)
+            {
+                Rect r = table.Rect;
+                dc.DrawLine(style.Border, new Point(r.X + table.KeyW, r.Top), new Point(r.X + table.KeyW, r.Bottom));
             }
 
             foreach (TreeGeom row in _layout.Rows)
