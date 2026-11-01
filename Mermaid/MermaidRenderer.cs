@@ -5,10 +5,11 @@ using MarkdownKit.PlantUml;
 namespace MarkdownKit.Mermaid
 {
     /// <summary>
-    /// Mermaid 渲染入口。目前只接两种图：
+    /// Mermaid 渲染入口。目前接三种图：
     ///   sequenceDiagram —— 翻译成 PlantUML 的时序图模型，布局和绘制直接复用 SequenceView；
-    ///   flowchart / graph —— 自己的分层布局 + Canvas 绘制。
-    /// 其他图型（classDiagram / stateDiagram / pie / gantt / journey …）返回 null，
+    ///   flowchart / graph —— 自己的分层布局 + Canvas 绘制；
+    ///   pie —— 扇形 + 图例，Canvas 绘制。
+    /// 其他图型（classDiagram / stateDiagram / gantt / journey …）返回 null，
     /// 调用方退回普通代码块显示源码。
     /// </summary>
     internal static class MermaidRenderer
@@ -38,6 +39,14 @@ namespace MarkdownKit.Mermaid
                     if (chart.Nodes.Count == 0)
                         return null;
                     return new MermaidFlowchartView(chart, fontSize, host);
+                }
+
+                if (kind == "pie")
+                {
+                    PieChart chart = MermaidPieParser.Parse(source);
+                    if (chart.Slices.Count == 0)
+                        return null;
+                    return new MermaidPieView(chart, fontSize, host);
                 }
             }
             catch (Exception)

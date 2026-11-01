@@ -61,6 +61,8 @@
     <Compile Include="MarkdownTheme.cs" />
     <Compile Include="Mermaid/MermaidFlowchart.cs" />
     <Compile Include="Mermaid/MermaidFlowchartView.cs" />
+    <Compile Include="Mermaid/MermaidPie.cs" />
+    <Compile Include="Mermaid/MermaidPieView.cs" />
     <Compile Include="Mermaid/MermaidRenderer.cs" />
     <Compile Include="Mermaid/MermaidSequenceParser.cs" />
     <Compile Include="PlantUml/ActivityLayout.cs" />
