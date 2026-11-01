@@ -166,12 +166,14 @@ namespace MarkdownKit.PlantUml
                 DrawCentered(dc, day.Weekday, new Rect(x, rowsBottom + monthH + numH, _layout.DayWidth, weekH));
             }
 
-            dc.DrawLine(_borderPen, new Point(axisLeft, top), new Point(axisLeft, rowsTop));
-            dc.DrawLine(_borderPen, new Point(axisLeft, rowsBottom), new Point(axisLeft, rowsBottom + bandH));
             dc.DrawLine(_borderPen, new Point(axisLeft, top + monthH), new Point(axisRight, top + monthH));
             dc.DrawLine(_borderPen, new Point(axisLeft, top + monthH + weekH), new Point(axisRight, top + monthH + weekH));
             dc.DrawLine(_borderPen, new Point(axisLeft, rowsBottom + monthH), new Point(axisRight, rowsBottom + monthH));
             dc.DrawLine(_borderPen, new Point(axisLeft, rowsBottom + monthH + numH), new Point(axisRight, rowsBottom + monthH + numH));
+
+            // 上下两条表头条带各自成框
+            dc.DrawRectangle(null, _borderPen, new Rect(axisLeft, top, _layout.AxisWidth, bandH));
+            dc.DrawRectangle(null, _borderPen, new Rect(axisLeft, rowsBottom, _layout.AxisWidth, bandH));
         }
 
         /// <summary>左边的 Start / End / Duration 表。</summary>
@@ -201,6 +203,11 @@ namespace MarkdownKit.PlantUml
 
             foreach (double x in _layout.ColumnEdges)
                 dc.DrawLine(_borderPen, new Point(x, top - headH), new Point(x, bottom));
+
+            // 表体外框 + 表头下边线
+            dc.DrawRectangle(null, _borderPen,
+                new Rect(left, top - headH, _layout.TableWidth, bottom - top + headH));
+            dc.DrawLine(_borderPen, new Point(left, top), new Point(_layout.TableWidth, top));
         }
 
         /// <summary>任务条 + 依赖小箭头。</summary>
@@ -221,18 +228,17 @@ namespace MarkdownKit.PlantUml
                 if (prev == null)
                     continue;
 
-                // 从上一环的尾巴绕到下面，再拐进本条的起点——两条常常是紧挨着的，
-                // 走直线没地方画，官方也是在条的下面绕一格
-                double busY = Math.Max(prev.Bar.Bottom, bar.Bottom) + U(4);
-                double x0 = prev.Bar.Right - U(3);
-                double x1 = bar.X + U(3);
+                // 从上一环条的下方绕到下一环的左侧：起点从条尾往左让出半格，
+                // 相邻两环才拐得开弯，箭头从左侧进条
+                double busY = bar.Bottom;
+                double x0 = prev.Bar.Right - _layout.DayWidth * 0.5;
+                double x1 = bar.X;
                 var geo = new StreamGeometry();
                 using (StreamGeometryContext ctx = geo.Open())
                 {
                     ctx.BeginFigure(new Point(x0, prev.Bar.Bottom), false, false);
                     ctx.LineTo(new Point(x0, busY), true, false);
                     ctx.LineTo(new Point(x1, busY), true, false);
-                    ctx.LineTo(new Point(x1, bar.Bottom), true, false);
                 }
                 geo.Freeze();
                 dc.DrawGeometry(null, _borderPen, geo);
@@ -241,9 +247,9 @@ namespace MarkdownKit.PlantUml
                 var tri = new StreamGeometry();
                 using (StreamGeometryContext ctx = tri.Open())
                 {
-                    ctx.BeginFigure(new Point(x1, bar.Bottom), true, true);
-                    ctx.LineTo(new Point(x1 - s * 0.45, bar.Bottom + s), true, false);
-                    ctx.LineTo(new Point(x1 + s * 0.45, bar.Bottom + s), true, false);
+                    ctx.BeginFigure(new Point(x1, busY), true, true);
+                    ctx.LineTo(new Point(x1 - s, busY - s * 0.45), true, false);
+                    ctx.LineTo(new Point(x1 - s, busY + s * 0.45), true, false);
                 }
                 tri.Freeze();
                 dc.DrawGeometry(_border, null, tri);
