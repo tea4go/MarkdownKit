@@ -18,7 +18,7 @@ namespace MarkdownKit.PlantUml
         public FormattedText Name;
     }
 
-    /// <summary>一格日期（表头/表尾的星期字母与日号）。</summary>
+    /// <summary>一格日期（表头/表尾的星期与日号）。</summary>
     internal sealed class GanttDayGeom
     {
         public DateTime Day;
@@ -155,13 +155,13 @@ namespace MarkdownKit.PlantUml
 
                 int dayCount = (int)(last - first).TotalDays + 1;
 
-                // 每格多宽由"星期字母 / 日号"里最宽的那个决定：字体比官方宽（等宽字体），
-                // 写死一个宽度的话 "Th" 和 "27" 会顶满格子、挤在一起看不清
+                // 每格多宽由"星期 / 日号"里最宽的那个决定：字体比官方宽（等宽字体），
+                // 写死一个宽度的话日号会顶满格子、挤在一起看不清
                 double labelW = 0;
                 for (int i = 0; i < dayCount; i++)
                 {
                     DateTime day = first.AddDays(i);
-                    labelW = Math.Max(labelW, Text(WeekdayLetter(day), _tf, _text).Width);
+                    labelW = Math.Max(labelW, Text(WeekdayLabel(day), _tf, _text).Width);
                     labelW = Math.Max(labelW, Text(day.Day.ToString(CultureInfo.InvariantCulture), _tf, _text).Width);
                 }
                 _layout.DayWidth = Math.Max(U(14), labelW + U(6));
@@ -186,7 +186,7 @@ namespace MarkdownKit.PlantUml
                     {
                         Day = day,
                         X = _layout.AxisX + i * _layout.DayWidth,
-                        Weekday = Text(WeekdayLetter(day), _tf, _text),
+                        Weekday = Text(WeekdayLabel(day), _tf, _text),
                         Number = Text(day.Day.ToString(CultureInfo.InvariantCulture), _tf, _text)
                     });
                 }
@@ -225,20 +225,20 @@ namespace MarkdownKit.PlantUml
                 return _layout;
             }
 
-            private static string WeekdayLetter(DateTime day)
+            private static string WeekdayLabel(DateTime day)
             {
-                string[] names = { "Su", "Mo", "Tu", "We", "Th", "Fr", "Sa" };
+                string[] names = { "天", "一", "二", "三", "四", "五", "六" };
                 return names[(int)day.DayOfWeek];
             }
 
             private static string MonthLabel(DateTime day)
             {
-                return day.ToString("MMMM yyyy", CultureInfo.InvariantCulture);
+                return day.ToString("yyyy-MM", CultureInfo.InvariantCulture);
             }
 
             private static string FormatDate(DateTime day)
             {
-                return day.ToString("MMM d", CultureInfo.InvariantCulture);
+                return day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
             }
 
             private FormattedText Text(string text, Typeface typeface, Brush brush)

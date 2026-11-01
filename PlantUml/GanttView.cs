@@ -127,7 +127,7 @@ namespace MarkdownKit.PlantUml
                 dc.Pop();
         }
 
-        /// <summary>轴上下各一份表头：月份、星期字母、日号，以及每天一条竖线。</summary>
+        /// <summary>轴上下各一份表头：月份、星期、日号，以及每天一条竖线。</summary>
         private void DrawCalendar(DrawingContext dc)
         {
             double monthH = _layout.MonthHeight;
@@ -156,7 +156,7 @@ namespace MarkdownKit.PlantUml
                 DrawCentered(dc, month.Text, new Rect(r.X, rowsBottom, r.Width, monthH));
             }
 
-            // 星期字母 + 日号（上、下各一份）
+            // 星期 + 日号（上、下各一份）
             foreach (GanttDayGeom day in _layout.Days)
             {
                 double x = day.X;
