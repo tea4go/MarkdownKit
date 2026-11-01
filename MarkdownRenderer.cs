@@ -27,6 +27,7 @@ using Markdig.Syntax.Inlines;
 using MarkdownKit.Formula;
 using MarkdownKit.Mermaid;
 using MarkdownKit.PlantUml;
+using MarkdownKit.Svg;
 using MdBlock = Markdig.Syntax.Block;
 using MdInline = Markdig.Syntax.Inlines.Inline;
 using MdMath = Markdig.Extensions.Mathematics.MathInline;
@@ -309,10 +310,10 @@ namespace MarkdownKit
             if (footnotes != null)
                 return FootnoteList(footnotes, fontSize);
 
-            // 原始 HTML 块：只有 <table> 认，其余照旧跳过（返回 null 由调用方丢弃）
+            // 原始 HTML 块：认 <svg> 和 <table>，其余照旧跳过（返回 null 由调用方丢弃）
             var htmlBlock = block as HtmlBlock;
             if (htmlBlock != null)
-                return HtmlTable(htmlBlock, fontSize);
+                return SvgBlock(htmlBlock, fontSize) ?? HtmlTable(htmlBlock, fontSize);
 
             return null;
         }
@@ -1576,6 +1577,62 @@ namespace MarkdownKit
         }
 
         /// <summary>
+        /// 原始 HTML 块里的内嵌 &lt;svg&gt;：画成矢量图，宽度按预览区自适应（只缩不放）。
+        /// 外面常套一层 &lt;div align="center"&gt;，对齐方式从它取。
+        /// </summary>
+        private static WpfBlock SvgBlock(HtmlBlock source, double fontSize)
+        {
+            string html = HtmlBlockText(source);
+            int open = html.IndexOf("<svg", StringComparison.OrdinalIgnoreCase);
+            if (open < 0)
+                return null;
+            string svg = ExtractSvg(html, open);
+            if (svg == null)
+                return null;
+
+            ImageSource image = SvgRenderer.TryCreate(svg);
+            if (image == null)
+                return null;
+
+            var view = new MarkdownImage
+            {
+                Source = image,
+                Stretch = Stretch.Uniform,
+                HorizontalAlignment = IsCenteredHtml(html, open)
+                    ? HorizontalAlignment.Center
+                    : HorizontalAlignment.Left
+            };
+            FollowImageHost(view, MarkdownImage.AvailableWidthProperty);
+            return new BlockUIContainer(view)
+            {
+                Margin = new Thickness(0, fontSize * 0.2, 0, fontSize * 0.6)
+            };
+        }
+
+        /// <summary>从 &lt;svg&gt; 开头截到第一个 &lt;/svg&gt;，后面的同块内容不看。</summary>
+        private static string ExtractSvg(string html, int open)
+        {
+            // 排除 <svgs> 这类同前缀的别的标签
+            char next = open + 4 < html.Length ? html[open + 4] : '\0';
+            if (next != '\0' && !char.IsWhiteSpace(next) && next != '>' && next != '/')
+                return null;
+            int close = html.IndexOf("</svg>", open + 4, StringComparison.OrdinalIgnoreCase);
+            if (close < 0)
+                return null;
+            return html.Substring(open, close + "</svg>".Length - open);
+        }
+
+        /// <summary>svg 前面的容器写了居中没有（&lt;div align="center"&gt;、text-align:center）。</summary>
+        private static bool IsCenteredHtml(string html, int svgStart)
+        {
+            string head = html.Substring(0, svgStart);
+            return Regex.IsMatch(head, "<center\\b", RegexOptions.IgnoreCase)
+                || Regex.IsMatch(head, "<(div|p)\\b[^>]*align\\s*=\\s*[\"']?center",
+                    RegexOptions.IgnoreCase)
+                || Regex.IsMatch(head, "text-align\\s*:\\s*center", RegexOptions.IgnoreCase);
+        }
+
+        /// <summary>
         /// 原始 HTML 的 &lt;table&gt;。Markdown 标准里没有列宽语法，要让列宽可控只能写 HTML 表格
         /// （Typora / GitHub 也支持），所以这里把它解析成和管道表格同一套外观。
         /// 支持：thead/tbody/tfoot、tr、th/td、colgroup/col 的宽度、colspan、
@@ -2105,7 +2162,7 @@ namespace MarkdownKit
                 {
                     Uri uri;
                     bool remote;
-                    BitmapSource local;
+                    ImageSource local;
                     if (!TryPrepareImage(link, out uri, out remote, out local))
                     {
                         // 占位排成行内文本（图标是个小的行内元素），位置跟真图片一样听段落的：
@@ -2554,7 +2611,7 @@ namespace MarkdownKit
         {
             Uri uri;
             bool remote;
-            BitmapSource local;
+            ImageSource local;
             if (!TryPrepareImage(image, out uri, out remote, out local))
             {
                 // 占位是一行字，排成段落比塞进 BlockUIContainer 更听话：缩进、折行都由段落自己管
@@ -2576,19 +2633,53 @@ namespace MarkdownKit
         /// 本地图必须现在解码完：量尺寸时图片尺寸得立刻可用，否则首次会按栏宽排版，
         /// 小图被当成大图放大到铺满。
         /// </summary>
-        private static bool TryPrepareImage(LinkInline link, out Uri uri, out bool remote, out BitmapSource local)
+        private static bool TryPrepareImage(LinkInline link, out Uri uri, out bool remote, out ImageSource local)
         {
             local = null;
             if (!ResolveImageUri(link.Url, _imageBaseDir, out uri, out remote))
                 return false;
             if (remote)
                 return true;
-            local = TryLoadLocalImage(uri);
+            local = LoadLocalImage(uri);
             return local != null;
         }
 
+        /// <summary>
+        /// 本地图片同步加载。.svg 走矢量渲染（要的是图形，不是位图），
+        /// 其余按常规图片解码。
+        /// </summary>
+        private static ImageSource LoadLocalImage(Uri uri)
+        {
+            if (IsSvgPath(uri))
+            {
+                string text = TryReadTextFile(uri);
+                return text == null ? null : SvgRenderer.TryCreate(text);
+            }
+            return TryLoadLocalImage(uri);
+        }
+
+        private static bool IsSvgPath(Uri uri)
+        {
+            if (uri == null)
+                return false;
+            string path = uri.IsFile ? uri.LocalPath : uri.AbsolutePath;
+            return path != null && path.EndsWith(".svg", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string TryReadTextFile(Uri uri)
+        {
+            try
+            {
+                return System.IO.File.ReadAllText(uri.LocalPath);
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
         /// <summary>把一张能加载的图片排成控件：本地图直接带位图，网络图异步拉取。</summary>
-        private static MarkdownImage MakeImage(LinkInline link, Uri uri, bool remote, BitmapSource local,
+        private static MarkdownImage MakeImage(LinkInline link, Uri uri, bool remote, ImageSource local,
             double fontSize)
         {
             string alt = InlineText(link);
@@ -2682,16 +2773,13 @@ namespace MarkdownKit
                 }
                 try
                 {
-                    using (var stream = new System.IO.MemoryStream(e.Result))
+                    ImageSource source = DecodeRemoteImage(e.Result, uri);
+                    if (source == null)
                     {
-                        var bitmap = new BitmapImage();
-                        bitmap.BeginInit();
-                        bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                        bitmap.StreamSource = stream;
-                        bitmap.EndInit();
-                        bitmap.Freeze();
-                        image.Source = bitmap;
+                        ReplaceWithFallback(image, alt, url, fontSize);
+                        return;
                     }
+                    image.Source = source;
                 }
                 catch (Exception)
                 {
@@ -2706,6 +2794,57 @@ namespace MarkdownKit
             {
                 client.Dispose();
                 ReplaceWithFallback(image, alt, url, fontSize);
+            }
+        }
+
+        /// <summary>
+        /// 网络图片解码：正文流是 SVG 就画矢量，否则按位图解。
+        /// 地址和内容两头看——私有库的 raw 地址往往没有 .svg 后缀。
+        /// </summary>
+        private static ImageSource DecodeRemoteImage(byte[] data, Uri uri)
+        {
+            if (data == null || data.Length == 0)
+                return null;
+            if (IsSvgPath(uri) || LooksLikeSvg(data))
+            {
+                string text = DecodeText(data);
+                return text == null ? null : SvgRenderer.TryCreate(text);
+            }
+
+            using (var stream = new System.IO.MemoryStream(data))
+            {
+                var bitmap = new BitmapImage();
+                bitmap.BeginInit();
+                bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                bitmap.StreamSource = stream;
+                bitmap.EndInit();
+                bitmap.Freeze();
+                return bitmap;
+            }
+        }
+
+        private static bool LooksLikeSvg(byte[] data)
+        {
+            int length = Math.Min(data.Length, 512);
+            string head = Encoding.UTF8.GetString(data, 0, length)
+                .TrimStart('﻿', ' ', '\t', '\r', '\n');
+            return head.StartsWith("<svg", StringComparison.OrdinalIgnoreCase)
+                || (head.StartsWith("<?xml", StringComparison.OrdinalIgnoreCase)
+                    && head.IndexOf("<svg", StringComparison.OrdinalIgnoreCase) >= 0);
+        }
+
+        /// <summary>按 BOM 自动认编码；没有 BOM 时按 UTF-8（SVG 最常见的写法）。</summary>
+        private static string DecodeText(byte[] data)
+        {
+            try
+            {
+                using (var stream = new System.IO.MemoryStream(data))
+                using (var reader = new System.IO.StreamReader(stream, Encoding.UTF8, true))
+                    return reader.ReadToEnd();
+            }
+            catch (Exception)
+            {
+                return null;
             }
         }
 
