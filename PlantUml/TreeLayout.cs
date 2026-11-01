@@ -393,7 +393,11 @@ namespace MarkdownKit.PlantUml
                 double thickness = _styles.Arrow.LineThickness ?? 1.2;
                 if (_styles.Arrow.Dash == null)
                 {
-                    var dotted = new Pen(edgeBrush, thickness) { DashStyle = DashStyles.Dot };
+                    // 3 个点、2 个空：DashStyle 单位是线宽倍数，比 DashStyles.Dot 的点密一些
+                    var dotted = new Pen(edgeBrush, thickness)
+                    {
+                        DashStyle = new DashStyle(new[] { 3.0, 2.0 }, 0)
+                    };
                     dotted.Freeze();
                     return dotted;
                 }
