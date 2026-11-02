@@ -86,6 +86,12 @@ namespace MarkdownKit
         /// </summary>
         public static bool StrictLineBreak;
 
+        /// <summary>
+        /// 网络图片同步下载开关：为真时 Render 返回前就把远程图取回来解好。
+        /// 导出 PDF 这类一次性排版用得到——异步下载的回调赶不上导出；预览保持 false。
+        /// </summary>
+        public static bool SynchronousRemoteImages;
+
         /// <summary>预览区控件，图片宽度按它自适应，只在一次 Render 期间有效。</summary>
         private static FrameworkElement _imageHost;
 
@@ -2761,6 +2767,25 @@ namespace MarkdownKit
                     if (Uri.TryCreate(access.Url, UriKind.Absolute, out authorized))
                         uri = authorized;
                 }
+            }
+
+            if (SynchronousRemoteImages)
+            {
+                // 导出 PDF 是同步排版：图片此刻还没挂进文档，失败占位没处放，取不到就留空
+                try
+                {
+                    ImageSource source = DecodeRemoteImage(client.DownloadData(uri), uri);
+                    if (source != null)
+                        image.Source = source;
+                }
+                catch (Exception)
+                {
+                }
+                finally
+                {
+                    client.Dispose();
+                }
+                return;
             }
 
             client.DownloadDataCompleted += (s, e) =>
