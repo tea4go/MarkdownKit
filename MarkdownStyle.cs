@@ -1,3 +1,4 @@
+using System.Windows;
 using System.Windows.Media;
 
 namespace MarkdownKit
@@ -13,8 +14,14 @@ namespace MarkdownKit
         /// <summary>正文与标题字体。</summary>
         public FontFamily PreviewFamily { get; set; }
 
+        /// <summary>正文字体粗细；默认 Normal，粗体时普通文字与强调文字同色同重，需自行取舍。</summary>
+        public FontWeight PreviewFontWeight { get; set; } = FontWeights.Normal;
+
         /// <summary>代码块与行内代码字体。</summary>
         public FontFamily EditorFamily { get; set; }
+
+        /// <summary>代码字体粗细；默认 Normal。</summary>
+        public FontWeight EditorFontWeight { get; set; } = FontWeights.Normal;
 
         /// <summary>PlantUML / Mermaid 图内字体。</summary>
         public FontFamily DiagramFamily { get; set; }

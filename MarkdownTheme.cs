@@ -11,7 +11,9 @@ namespace MarkdownKit
     {
         public static MarkdownPalette Markdown { get; private set; } = MarkdownPalette.Light();
         public static FontFamily PreviewFamily { get; private set; } = SystemFonts.MessageFontFamily;
+        public static FontWeight PreviewFontWeight { get; private set; } = FontWeights.Normal;
         public static FontFamily EditorFamily { get; private set; } = new FontFamily("Consolas");
+        public static FontWeight EditorFontWeight { get; private set; } = FontWeights.Normal;
         public static FontFamily DiagramFamily { get; private set; } = new FontFamily("Microsoft YaHei");
         public static double DiagramFontSize { get; private set; } = 16;
         public static double NoteFold { get; private set; } = 14;
@@ -30,7 +32,9 @@ namespace MarkdownKit
                 return;
             if (style.Markdown != null) Markdown = style.Markdown;
             if (style.PreviewFamily != null) PreviewFamily = style.PreviewFamily;
+            PreviewFontWeight = style.PreviewFontWeight;
             if (style.EditorFamily != null) EditorFamily = style.EditorFamily;
+            EditorFontWeight = style.EditorFontWeight;
             if (style.DiagramFamily != null) DiagramFamily = style.DiagramFamily;
             if (style.DiagramFontSize > 0) DiagramFontSize = style.DiagramFontSize;
             if (style.NoteFold > 0) NoteFold = style.NoteFold;

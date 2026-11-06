@@ -211,9 +211,9 @@ namespace MarkdownKit
             {
                 FontFamily = MarkdownTheme.PreviewFamily,
                 FontSize = fontSize,
-                // 恒为 Normal：正文要是跟「预览粗体」走，**加粗** 就跟普通文字一个样了。
-                // 钉死也是防 WPF 的默认值跟随系统「消息字体」——系统设成粗体时整份文档都会变粗。
-                FontWeight = FontWeights.Normal,
+                // 跟随宿主设置的正文粗细；默认 Normal 也防 WPF 的默认值跟着系统「消息字体」走——
+                // 系统设成粗体时整份文档都会变粗。开启粗体后 **强调** 与普通文字同重，无法再区分。
+                FontWeight = MarkdownTheme.PreviewFontWeight,
                 Foreground = MarkdownTheme.Markdown.Text,
                 Background = Brushes.Transparent,
                 PagePadding = new Thickness(0),
@@ -911,6 +911,7 @@ namespace MarkdownKit
             {
                 FontFamily = MarkdownTheme.EditorFamily,
                 FontSize = fontSize * 0.95,
+                FontWeight = MarkdownTheme.EditorFontWeight,
                 Foreground = MarkdownTheme.Markdown.Text,
                 // 不设的话 FlowDocument 默认 400 宽，会把代码排成好几栏
                 ColumnWidth = double.PositiveInfinity,
@@ -958,6 +959,7 @@ namespace MarkdownKit
                 Text = LineNumberText(code),
                 FontFamily = MarkdownTheme.EditorFamily,
                 FontSize = fontSize * 0.95,
+                FontWeight = MarkdownTheme.EditorFontWeight,
                 Foreground = MarkdownTheme.Muted,
                 TextAlignment = TextAlignment.Right,
                 VerticalAlignment = VerticalAlignment.Top,
@@ -1012,7 +1014,7 @@ namespace MarkdownKit
         private static double CodePageWidth(string code, double fontSize)
         {
             var typeface = new Typeface(MarkdownTheme.EditorFamily,
-                FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
+                FontStyles.Normal, MarkdownTheme.EditorFontWeight, FontStretches.Normal);
             double widest = 0;
             int start = 0;
             for (int i = 0; i <= code.Length; i++)
@@ -1400,6 +1402,7 @@ namespace MarkdownKit
                 Text = text,
                 FontSize = fontSize,
                 FontFamily = MarkdownTheme.PreviewFamily,
+                FontWeight = MarkdownTheme.PreviewFontWeight,
                 Foreground = foreground,
                 Margin = margin,
                 TextWrapping = wrap ? TextWrapping.Wrap : TextWrapping.NoWrap
@@ -1830,7 +1833,12 @@ namespace MarkdownKit
                         else if (name == "i" || name == "em")
                             span.FontStyle = FontStyles.Italic;
                         else if (name == "code")
+                        {
                             span.FontFamily = MarkdownTheme.EditorFamily;
+                            // 默认重量保持继承（父级可能是 <b>），只有设置了粗体才覆盖
+                            if (MarkdownTheme.EditorFontWeight != FontWeights.Normal)
+                                span.FontWeight = MarkdownTheme.EditorFontWeight;
+                        }
                         else
                             span.FontSize = fontSize * 0.75;
                         sink.Add(span);
@@ -2106,6 +2114,9 @@ namespace MarkdownKit
                     FontFamily = MarkdownTheme.EditorFamily,
                     FontSize = fontSize * 0.95
                 };
+                // 默认重量保持继承（如 **`code`**），只有设置了粗体才覆盖
+                if (MarkdownTheme.EditorFontWeight != FontWeights.Normal)
+                    span.FontWeight = MarkdownTheme.EditorFontWeight;
                 span.Inlines.Add(new Run(code.Content));
                 target.Add(span);
                 return;
