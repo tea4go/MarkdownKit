@@ -1452,11 +1452,10 @@ namespace MarkdownKit
                 BorderThickness = new Thickness(1),
                 Margin = new Thickness(0, 0, 0, fontSize * 0.5)
             };
-            // 各列宽度按内容长短加权分配：# / ID 这类短列收窄，长文本列占大头。
-            // 全用 Auto 的话，长文本列会按不换行的原宽撑出去（预览区没有横向滚动条，会被裁掉），
-            // 所以统一用星号列，只是权重按内容算。
+            // 各列宽度按内容估算成像素再按宿主宽度收放。这里**不能**用星号列：
+            // 单元格里长代码 token 的最小内容宽度会把整表撑出页面，排到后面的列只剩 0 宽，
+            // 文字被迫逐字换行，行高被撑到几百像素——窄面板里的六列表格就是这种表现。
             int[] widths = new int[columnCount];
-            bool hasLong = false;
             foreach (MdTableRow row in rows)
             {
                 int index = 0;
@@ -1468,22 +1467,50 @@ namespace MarkdownKit
                     index++;
                 }
             }
-            for (int i = 0; i < columnCount; i++)
-                if (widths[i] > 6)
-                    hasLong = true;
+
+            // 半角按 0.6em 估（给数字/等宽字留点余量），全角（宽度记 2）自然得到 1.2em；
+            // 再加上单元格左右内边距、网格线和 4px 余量。估窄了列里的字会折行，行高反而变高。
+            double cellPad = fontSize * 0.8 + 2;
+            double[] natural = new double[columnCount];
+            double[] floor = new double[columnCount];
+            double totalNatural = 0;
+            double totalFloor = 0;
             for (int i = 0; i < columnCount; i++)
             {
-                // 短列（#、ID、是否…）直接按内容宽度定，不参与比例分配：
-                // 用星号权重的话，旁边两列一长，它按比例分到的宽度连 "01" 都放不下，只能折行。
-                if (hasLong && widths[i] <= 6)
+                natural[i] = Math.Max(widths[i], 2) * fontSize * 0.6 + cellPad + 4;
+                // 地板给 6em，避免短内容列被长列挤成一条缝；本身就比 6em 窄的列按自身宽度算。
+                floor[i] = Math.Min(natural[i], fontSize * 6 + cellPad);
+                totalNatural += natural[i];
+                totalFloor += floor[i];
+            }
+
+            for (int i = 0; i < columnCount; i++)
+            {
+                var column = new TableColumn();
+                if (_imageHost != null)
                 {
-                    table.Columns.Add(new TableColumn { Width = GridLength.Auto });
-                    continue;
+                    // 跟随宿主宽度，面板拖动分栏时列宽也能跟着重新分配。
+                    var layout = new TableColumnWidthLayout
+                    {
+                        Natural = natural[i],
+                        Floor = floor[i],
+                        TotalNatural = totalNatural,
+                        TotalFloor = totalFloor,
+                    };
+                    BindingOperations.SetBinding(column, TableColumn.WidthProperty,
+                        new Binding(nameof(FrameworkElement.ActualWidth))
+                        {
+                            Source = _imageHost,
+                            Converter = layout,
+                        });
                 }
-                // 长列仍用加权星号：既体现内容比例，又不会像 Auto 那样按不换行的原宽撑出页面。
-                // 全是短列时也走这里（权重按内容比例），否则表会被等分成几大块。
-                double weight = Math.Min(Math.Max(widths[i], 1), 60);
-                table.Columns.Add(new TableColumn { Width = new GridLength(weight, GridUnitType.Star) });
+                else
+                {
+                    // 没有宿主就按估算宽度排，至少不会把列压成 0 宽。
+                    column.Width = new GridLength(natural[i]);
+                }
+
+                table.Columns.Add(column);
             }
 
             var group = new TableRowGroup();
@@ -1525,6 +1552,50 @@ namespace MarkdownKit
             }
 
             return table;
+        }
+
+        /// <summary>
+        /// 把宿主实际宽度分给各列：够宽就按内容自然宽度，不够就在「最小宽度」之上按内容比例压缩。
+        /// 绑到宿主 ActualWidth 上，面板拖宽拖窄时列宽跟着重排。
+        /// </summary>
+        private sealed class TableColumnWidthLayout : IValueConverter
+        {
+            public double Natural { get; set; }
+
+            public double Floor { get; set; }
+
+            public double TotalNatural { get; set; }
+
+            public double TotalFloor { get; set; }
+
+            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+            {
+                // 减掉表格左右外框，避免列宽总和比可用宽度多出 2px 又触发裁切
+                double available = value is double width && width > 0 ? width - 2 : 0;
+                if (available <= 0)
+                {
+                    // 宿主还没布局出宽度：先按最小宽度排，等 ActualWidth 绑定回填后再重排。
+                    // 返回自然宽度会撑出页面，排在后面的列被压成 0 宽，反而把行高撑大。
+                    return new GridLength(Floor);
+                }
+
+                if (available >= TotalNatural)
+                {
+                    // 够宽就按自然宽度铺满可用宽度，保持宽预览里表格占满整行的原有观感
+                    return new GridLength(Natural + (available - TotalNatural) * Natural / TotalNatural);
+                }
+
+                double result;
+                if (available <= TotalFloor)
+                    result = Floor * available / TotalFloor;
+                else
+                    result = Floor + (Natural - Floor) * (available - TotalFloor) / (TotalNatural - TotalFloor);
+
+                return new GridLength(Math.Max(1, result));
+            }
+
+            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
+                throw new NotSupportedException();
         }
 
         /// <summary>
