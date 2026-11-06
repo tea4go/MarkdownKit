@@ -133,7 +133,9 @@ namespace MarkdownKit.Formula
 
         private static TexEnvironment Environment(double scale, TexStyle style)
         {
-            return WpfTeXEnvironment.Create(style, scale, FormulaRenderer.SystemTextFont);
+            // WpfMath 不传前景色时直接画成黑色，深色主题下公式就看不见了；跟着正文色走。
+            return WpfTeXEnvironment.Create(style, scale, FormulaRenderer.SystemTextFont,
+                MarkdownTheme.Markdown?.Text);
         }
 
         /// <summary>正文在该字号下的下沉量（基线到底边的距离）。段落撑行高时要用。</summary>
