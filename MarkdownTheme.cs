@@ -14,6 +14,8 @@ namespace MarkdownKit
         public static FontWeight PreviewFontWeight { get; private set; } = FontWeights.Normal;
         public static FontFamily EditorFamily { get; private set; } = new FontFamily("Consolas");
         public static FontWeight EditorFontWeight { get; private set; } = FontWeights.Normal;
+        /// <summary>代码块字号；0 表示未配置，按正文字号缩放。</summary>
+        public static double EditorFontSize { get; private set; }
         public static FontFamily DiagramFamily { get; private set; } = new FontFamily("Microsoft YaHei");
         public static double DiagramFontSize { get; private set; } = 16;
         public static double NoteFold { get; private set; } = 14;
@@ -35,6 +37,7 @@ namespace MarkdownKit
             PreviewFontWeight = style.PreviewFontWeight;
             if (style.EditorFamily != null) EditorFamily = style.EditorFamily;
             EditorFontWeight = style.EditorFontWeight;
+            if (style.EditorFontSize > 0) EditorFontSize = style.EditorFontSize;
             if (style.DiagramFamily != null) DiagramFamily = style.DiagramFamily;
             if (style.DiagramFontSize > 0) DiagramFontSize = style.DiagramFontSize;
             if (style.NoteFold > 0) NoteFold = style.NoteFold;

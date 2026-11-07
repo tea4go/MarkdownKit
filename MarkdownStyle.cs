@@ -20,6 +20,9 @@ namespace MarkdownKit
         /// <summary>代码块与行内代码字体。</summary>
         public FontFamily EditorFamily { get; set; }
 
+        /// <summary>代码块字号；0 表示未指定，按正文字号缩放。</summary>
+        public double EditorFontSize { get; set; }
+
         /// <summary>代码字体粗细；默认 Normal。</summary>
         public FontWeight EditorFontWeight { get; set; } = FontWeights.Normal;
 

@@ -907,10 +907,15 @@ namespace MarkdownKit
             var paragraph = new Paragraph { Margin = new Thickness(0) };
             Highlight(paragraph.Inlines, code, FenceLanguage(source));
 
+            // 宿主配置了独立代码字号就按它排，否则沿用正文的 95%。
+            double codeSize = MarkdownTheme.EditorFontSize > 0
+                ? MarkdownTheme.EditorFontSize
+                : fontSize * 0.95;
+
             var document = new FlowDocument(paragraph)
             {
                 FontFamily = MarkdownTheme.EditorFamily,
-                FontSize = fontSize * 0.95,
+                FontSize = codeSize,
                 FontWeight = MarkdownTheme.EditorFontWeight,
                 Foreground = MarkdownTheme.Markdown.Text,
                 // 不设的话 FlowDocument 默认 400 宽，会把代码排成好几栏
@@ -958,7 +963,7 @@ namespace MarkdownKit
             {
                 Text = LineNumberText(code),
                 FontFamily = MarkdownTheme.EditorFamily,
-                FontSize = fontSize * 0.95,
+                FontSize = codeSize,
                 FontWeight = MarkdownTheme.EditorFontWeight,
                 Foreground = MarkdownTheme.Muted,
                 TextAlignment = TextAlignment.Right,
@@ -987,8 +992,8 @@ namespace MarkdownKit
                 HorizontalAlignment = HorizontalAlignment.Right,
                 VerticalAlignment = VerticalAlignment.Top
             };
-            buttons.Children.Add(LineNumberButton(numbers, paragraph, text, fontSize));
-            buttons.Children.Add(CopyButton(code, fontSize));
+            buttons.Children.Add(LineNumberButton(numbers, paragraph, text, codeSize));
+            buttons.Children.Add(CopyButton(code, codeSize));
 
             Grid.SetColumn(buttons, 2);
             content.Children.Add(buttons);
@@ -1001,8 +1006,8 @@ namespace MarkdownKit
                 CornerRadius = new CornerRadius(16),
                 // 左边固定 5px：行号（开时）和代码（关时）都离左边框这么远，
                 // 不会因为行号那列收起来就把这块留白变大
-                Padding = new Thickness(5, fontSize * 0.5, fontSize * 0.5, fontSize * 0.5),
-                Margin = new Thickness(0, 0, 0, fontSize * 0.5),
+                Padding = new Thickness(5, codeSize * 0.5, codeSize * 0.5, codeSize * 0.5),
+                Margin = new Thickness(0, 0, 0, codeSize * 0.5),
                 Child = content
             });
         }
@@ -1276,7 +1281,7 @@ namespace MarkdownKit
         {
             if (on)
             {
-                double height = Math.Round(fontSize * 0.95 * 1.45);
+                double height = Math.Round(fontSize * 1.45);
                 paragraph.LineHeight = height;
                 paragraph.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
                 numbers.LineHeight = height;
