@@ -199,7 +199,8 @@ namespace MarkdownKit.PlantUml
                         || trimmed.StartsWith("@end", StringComparison.OrdinalIgnoreCase)
                         || trimmed.StartsWith("!", StringComparison.Ordinal))
                         continue;
-                    if (line.Length > 0 && line[0] == '\'')
+                    if (!inString && line.Length > 0 && line[0] == '\''
+                        && !HasClosingSingleQuote(line))
                         continue;
 
                     var clean = new StringBuilder();
@@ -453,6 +454,30 @@ namespace MarkdownKit.PlantUml
                 while (_pos < _text.Length && _text[_pos] != ':' && _text[_pos] != ',' && _text[_pos] != '}')
                     _pos++;
                 return _text.Substring(start, _pos - start).Trim();
+            }
+
+            // 列首的单引号既可能是 PlantUML 注释，也可能是 JSON5 顶格的单引号键/值；
+            // 行内能找到未转义的配对右引号就按数据行处理，否则当注释跳过。
+            private static bool HasClosingSingleQuote(string line)
+            {
+                bool escape = false;
+                for (int i = 1; i < line.Length; i++)
+                {
+                    char c = line[i];
+                    if (escape)
+                    {
+                        escape = false;
+                        continue;
+                    }
+                    if (c == '\\')
+                    {
+                        escape = true;
+                        continue;
+                    }
+                    if (c == '\'')
+                        return true;
+                }
+                return false;
             }
 
             private string Scalar()
