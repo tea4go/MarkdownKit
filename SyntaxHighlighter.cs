@@ -99,7 +99,7 @@ namespace MarkdownKit
             /// <summary>开关不同的成对引号（Lua 的 [[ ]]），元素是 [开, 闭]。</summary>
             public readonly string[][] QuotePairs;
 
-            /// <summary>为真时，「标识符 + 冒号」当成属性名/键名（CSS、SCSS、YAML）。</summary>
+            /// <summary>为真时，「标识符 + 冒号」当成属性名/键名（CSS、SCSS、YAML、JSON5 的裸键）。</summary>
             public readonly bool PropertyColon;
 
             /// <summary>
@@ -956,8 +956,6 @@ namespace MarkdownKit
 
                 case "json":
                 case "jsonc":
-                    return JsonStyle;
-
                 case "json5":
                     return JsonStyle;
 
@@ -1224,13 +1222,44 @@ namespace MarkdownKit
             return -1;
         }
 
-        /// <summary>标识符后面（跳过空格）紧跟冒号，且不是双冒号（C++/PHP 的 ::）。</summary>
+        /// <summary>标识符后面（跳过空白与注释）紧跟冒号，且不是双冒号（C++/PHP 的 ::）。</summary>
         private static bool NextIsColon(string code, int i)
         {
-            while (i < code.Length && (code[i] == ' ' || code[i] == '\t'))
-                i++;
+            i = SkipSpaceAndComments(code, i);
             return i < code.Length && code[i] == ':'
                 && (i + 1 >= code.Length || code[i + 1] != ':');
+        }
+
+        /// <summary>跳过空格、制表符、换行，以及 // 与 /* */ 注释。JSON5 允许键后换行或隔注释再写冒号。</summary>
+        private static int SkipSpaceAndComments(string code, int i)
+        {
+            while (i < code.Length)
+            {
+                char c = code[i];
+                if (c == ' ' || c == '\t' || c == '\r' || c == '\n')
+                {
+                    i++;
+                    continue;
+                }
+                if (c == '/' && i + 1 < code.Length && code[i + 1] == '/')
+                {
+                    int newline = code.IndexOf('\n', i);
+                    if (newline < 0)
+                        return code.Length;
+                    i = newline + 1;
+                    continue;
+                }
+                if (c == '/' && i + 1 < code.Length && code[i + 1] == '*')
+                {
+                    int close = code.IndexOf("*/", i + 2, StringComparison.Ordinal);
+                    if (close < 0)
+                        return code.Length;
+                    i = close + 2;
+                    continue;
+                }
+                break;
+            }
+            return i;
         }
 
         /// <summary>
