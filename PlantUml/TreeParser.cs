@@ -6,8 +6,8 @@ using System.Text;
 namespace MarkdownKit.PlantUml
 {
     /// <summary>
-    /// 把思维导图 / WBS / JSON / YAML 解析成同一套 <see cref="TreeDiagram"/>。
-    /// 前两者是 `*` / `+` 缩进大纲，后两者是嵌套数据，最终都变成"节点 + 子节点"的树。
+    /// 把思维导图 / WBS / JSON / YAML / INI / TOML / XML 解析成同一套 <see cref="TreeDiagram"/>。
+    /// 前两者是 `*` / `+` 缩进大纲，其余是嵌套数据，最终都变成"节点 + 子节点"的树。
     /// </summary>
     internal static class TreeParser
     {
@@ -25,6 +25,12 @@ namespace MarkdownKit.PlantUml
                 new JsonReader(lines, diagram).Run();
             else if (kind == TreeKind.Yaml)
                 new YamlReader(lines, diagram).Run();
+            else if (kind == TreeKind.Ini)
+                new IniReader(lines, diagram).Run();
+            else if (kind == TreeKind.Toml)
+                new TomlReader(lines, diagram).Run();
+            else if (kind == TreeKind.Xml)
+                new XmlReader(source ?? string.Empty, diagram).Run();
             else
                 new OutlineReader(lines, diagram).Run();
 

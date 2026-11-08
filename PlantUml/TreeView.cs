@@ -82,7 +82,7 @@ namespace MarkdownKit.PlantUml
 
         private bool IsTable
         {
-            get { return _diagram.Kind == TreeKind.Json || _diagram.Kind == TreeKind.Yaml; }
+            get { return _diagram.Kind.IsTableKind(); }
         }
 
         private void EnsureLayout()
@@ -145,7 +145,7 @@ namespace MarkdownKit.PlantUml
                 dc.PushTransform(new ScaleTransform(_scale, _scale));
 
             DrawEdges(dc);
-            if (_layout.Kind == TreeKind.Json || _layout.Kind == TreeKind.Yaml)
+            if (_layout.Kind.IsTableKind())
                 DrawTables(dc);
             else
             {
@@ -186,7 +186,7 @@ namespace MarkdownKit.PlantUml
                 return;
             }
 
-            bool table = _layout.Kind == TreeKind.Json || _layout.Kind == TreeKind.Yaml;
+            bool table = _layout.Kind.IsTableKind();
             Pen pen = table ? _layout.EdgePen : _linePen;
             Brush arrowFill = table ? _layout.EdgeBrush : _border;
             foreach (TreeEdgeGeom edge in _layout.Edges)

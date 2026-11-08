@@ -123,6 +123,15 @@ namespace MarkdownKit.PlantUml
                 case "yaml":
                     treeKind = TreeKind.Yaml;
                     return true;
+                case "ini":
+                    treeKind = TreeKind.Ini;
+                    return true;
+                case "toml":
+                    treeKind = TreeKind.Toml;
+                    return true;
+                case "xml":
+                    treeKind = TreeKind.Xml;
+                    return true;
                 default:
                     treeKind = TreeKind.MindMap;
                     return false;

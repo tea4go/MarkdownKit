@@ -2,7 +2,7 @@ using System.Collections.Generic;
 
 namespace MarkdownKit.PlantUml
 {
-    /// <summary>树形图的种类。四者结构一样，只是排布方向和节点形状不同。</summary>
+    /// <summary>树形图的种类。结构一样，只是排布方向和节点形状不同。</summary>
     internal enum TreeKind
     {
         /// <summary>思维导图：根在左、子节点往右铺，`+` 开头的分支铺到左边，圆角框 + 曲线。</summary>
@@ -15,7 +15,26 @@ namespace MarkdownKit.PlantUml
         Json,
 
         /// <summary>YAML：同 JSON，只是输入是缩进式的 YAML。</summary>
-        Yaml
+        Yaml,
+
+        /// <summary>INI / .conf：同 JSON，只是输入是 [section] + key=value。</summary>
+        Ini,
+
+        /// <summary>TOML：同 JSON，只是输入是 [table] + key = value。</summary>
+        Toml,
+
+        /// <summary>XML：同 JSON，元素、属性、文本各自成行。</summary>
+        Xml
+    }
+
+    internal static class TreeKindExtensions
+    {
+        /// <summary>按"键值表格"排布的树；其余（思维导图 / WBS）按节点框绘制。</summary>
+        public static bool IsTableKind(this TreeKind kind)
+        {
+            return kind == TreeKind.Json || kind == TreeKind.Yaml
+                || kind == TreeKind.Ini || kind == TreeKind.Toml || kind == TreeKind.Xml;
+        }
     }
 
     /// <summary>树形图里的一个节点。</summary>

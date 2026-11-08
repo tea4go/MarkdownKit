@@ -75,6 +75,7 @@
     <Compile Include="PlantUml/ComponentModel.cs" />
     <Compile Include="PlantUml/ComponentParser.cs" />
     <Compile Include="PlantUml/ComponentView.cs" />
+    <Compile Include="PlantUml/ConfigTreeReaders.cs" />
     <Compile Include="PlantUml/GanttLayout.cs" />
     <Compile Include="PlantUml/GanttParser.cs" />
     <Compile Include="PlantUml/GanttView.cs" />
