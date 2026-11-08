@@ -500,7 +500,7 @@ namespace MarkdownKit.PlantUml
                     char c = line[i];
                     if (c == ' ' || c == '\t' || c == '\r')
                         continue;
-                    return c == ':' || c == ',' || c == ']' || c == '}' || c == '/';
+                    return c == ':' || c == ',' || c == ']' || c == '}' || c == '/' || c == '#';
                 }
                 return true;
             }
