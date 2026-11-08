@@ -175,11 +175,25 @@ namespace MarkdownKit.PlantUml
                 bool blockIsLeading = false;
                 int blockStartLine = -1;
                 int lineNo = -1;
+                bool inString = false;
+                char stringQuote = '"';
+                bool escape = false;
 
                 foreach (string raw in _lines)
                 {
                     lineNo++;
                     string line = raw;
+
+                    // 上一行末尾是反斜杠：字符串跨行延续，行尾的 \ 已吃掉换行；
+                    // 没有续行标记却仍未闭合的，宽松复位，避免吞掉后面的行
+                    if (inString)
+                    {
+                        if (escape)
+                            escape = false;
+                        else
+                            inString = false;
+                    }
+
                     string trimmed = line.Trim();
                     if (trimmed.StartsWith("@start", StringComparison.OrdinalIgnoreCase)
                         || trimmed.StartsWith("@end", StringComparison.OrdinalIgnoreCase)
@@ -191,9 +205,6 @@ namespace MarkdownKit.PlantUml
                     var clean = new StringBuilder();
                     string inline = null;
                     bool hadComment = false;
-                    bool inString = false;
-                    char stringQuote = '"';
-                    bool escape = false;
 
                     for (int i = 0; i < line.Length;)
                     {
@@ -237,6 +248,7 @@ namespace MarkdownKit.PlantUml
                         if (c == '"' || c == '\'')
                         {
                             inString = true;
+                            stringQuote = c;
                             clean.Append(c);
                             i++;
                             continue;
