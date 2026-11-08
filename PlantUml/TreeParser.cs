@@ -192,6 +192,7 @@ namespace MarkdownKit.PlantUml
                     string inline = null;
                     bool hadComment = false;
                     bool inString = false;
+                    char stringQuote = '"';
                     bool escape = false;
 
                     for (int i = 0; i < line.Length;)
@@ -227,13 +228,13 @@ namespace MarkdownKit.PlantUml
                                 escape = false;
                             else if (c == '\\')
                                 escape = true;
-                            else if (c == '"')
+                            else if (c == stringQuote)
                                 inString = false;
                             i++;
                             continue;
                         }
 
-                        if (c == '"')
+                        if (c == '"' || c == '\'')
                         {
                             inString = true;
                             clean.Append(c);
@@ -434,7 +435,7 @@ namespace MarkdownKit.PlantUml
             private string Key()
             {
                 Skip();
-                if (_pos < _text.Length && _text[_pos] == '"')
+                if (_pos < _text.Length && (_text[_pos] == '"' || _text[_pos] == '\''))
                     return Scalar();
                 int start = _pos;
                 while (_pos < _text.Length && _text[_pos] != ':' && _text[_pos] != ',' && _text[_pos] != '}')
@@ -447,11 +448,12 @@ namespace MarkdownKit.PlantUml
                 Skip();
                 if (_pos >= _text.Length)
                     return "";
-                if (_text[_pos] == '"')
+                char quote = _text[_pos];
+                if (quote == '"' || quote == '\'')
                 {
                     _pos++;
                     var sb = new StringBuilder();
-                    while (_pos < _text.Length && _text[_pos] != '"')
+                    while (_pos < _text.Length && _text[_pos] != quote)
                     {
                         if (_text[_pos] == '\\' && _pos + 1 < _text.Length)
                         {
@@ -464,6 +466,11 @@ namespace MarkdownKit.PlantUml
                                 case 'b': sb.Append('\b'); break;
                                 case 'f': sb.Append('\f'); break;
                                 case 'u': AppendUnicode(sb); break;
+                                case '\n': break;   // JSON5 行尾 \ 续行，换行不进入值
+                                case '\r':
+                                    if (_pos + 1 < _text.Length && _text[_pos + 1] == '\n')
+                                        _pos++;
+                                    break;
                                 default: sb.Append(_text[_pos]); break;
                             }
                         }
