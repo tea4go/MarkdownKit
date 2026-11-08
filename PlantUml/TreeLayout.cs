@@ -147,7 +147,7 @@ namespace MarkdownKit.PlantUml
 
             private bool IsTable
             {
-                get { return _diagram.Kind == TreeKind.Json || _diagram.Kind == TreeKind.Yaml; }
+                get { return _diagram.Kind.IsTableKind(); }
             }
 
             /// <summary>JSON / YAML 的行高。</summary>
