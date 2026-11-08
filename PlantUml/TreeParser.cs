@@ -163,20 +163,149 @@ namespace MarkdownKit.PlantUml
 
             public void Run()
             {
+                // 拼接解析文本时顺带剥离注释：键上方紧邻的注释攒着挂到下一行内容上，
+                // 遇纯空行断开；行尾注释也算该行的说明。拼接后的文本不再含注释，
+                // 用每行的起始偏移把注释查回键所在行。
                 var sb = new StringBuilder();
+                var starts = new List<int>();
+                var notes = new List<string>();
+                var pending = new List<string>();
+                var block = new StringBuilder();
+                bool inBlock = false;
+                bool blockIsLeading = false;
+                int blockStartLine = -1;
+                int lineNo = -1;
+
                 foreach (string raw in _lines)
                 {
-                    string line = raw.Trim();
-                    if (line.Length == 0 || line[0] == '\'')
+                    lineNo++;
+                    string line = raw;
+                    string trimmed = line.Trim();
+                    if (trimmed.StartsWith("@start", StringComparison.OrdinalIgnoreCase)
+                        || trimmed.StartsWith("@end", StringComparison.OrdinalIgnoreCase)
+                        || trimmed.StartsWith("!", StringComparison.Ordinal))
                         continue;
-                    if (line.StartsWith("@start", StringComparison.OrdinalIgnoreCase)
-                        || line.StartsWith("@end", StringComparison.OrdinalIgnoreCase)
-                        || line.StartsWith("!", StringComparison.Ordinal))
+                    if (line.Length > 0 && line[0] == '\'')
                         continue;
-                    sb.Append(line);
+
+                    var clean = new StringBuilder();
+                    string inline = null;
+                    bool hadComment = false;
+                    bool inString = false;
+                    bool escape = false;
+
+                    for (int i = 0; i < line.Length;)
+                    {
+                        char c = line[i];
+
+                        if (inBlock)
+                        {
+                            int end = line.IndexOf("*/", i, StringComparison.Ordinal);
+                            if (end < 0)
+                            {
+                                AppendBlockLine(block, line.Substring(i));
+                                i = line.Length;
+                                break;
+                            }
+                            AppendBlockLine(block, line.Substring(i, end - i));
+                            i = end + 2;
+                            inBlock = false;
+                            // 行首块注释（含跨行）作为说明；行内块注释只显示单行那种
+                            if (blockIsLeading)
+                                pending.Add(block.ToString().Trim());
+                            else if (lineNo == blockStartLine)
+                                inline = ConcatNote(inline, block.ToString().Trim());
+                            block.Clear();
+                            hadComment = true;
+                            continue;
+                        }
+
+                        if (inString)
+                        {
+                            clean.Append(c);
+                            if (escape)
+                                escape = false;
+                            else if (c == '\\')
+                                escape = true;
+                            else if (c == '"')
+                                inString = false;
+                            i++;
+                            continue;
+                        }
+
+                        if (c == '"')
+                        {
+                            inString = true;
+                            clean.Append(c);
+                            i++;
+                            continue;
+                        }
+
+                        if (c == '/' && i + 1 < line.Length && line[i + 1] == '/')
+                        {
+                            string comment = line.Substring(i + 2).Trim();
+                            if (clean.ToString().Trim().Length == 0)
+                                pending.Add(comment);
+                            else
+                                inline = ConcatNote(inline, comment);
+                            hadComment = true;
+                            i = line.Length;
+                            break;
+                        }
+
+                        if (c == '/' && i + 1 < line.Length && line[i + 1] == '*')
+                        {
+                            blockIsLeading = clean.ToString().Trim().Length == 0;
+                            blockStartLine = lineNo;
+                            block.Clear();
+                            inBlock = true;
+                            hadComment = true;
+                            i += 2;
+                            continue;
+                        }
+
+                        // 非标准的 # 注释：JSON 里字符串外出现、且前面是空白时才认
+                        if (c == '#' && (i == 0 || char.IsWhiteSpace(line[i - 1])))
+                        {
+                            string comment = line.Substring(i + 1).Trim();
+                            if (clean.ToString().Trim().Length == 0)
+                                pending.Add(comment);
+                            else
+                                inline = ConcatNote(inline, comment);
+                            hadComment = true;
+                            i = line.Length;
+                            break;
+                        }
+
+                        clean.Append(c);
+                        i++;
+                    }
+
+                    // 跨行块注释还没结束、本行又没有内容：整行都是注释
+                    if (inBlock && clean.ToString().Trim().Length == 0)
+                        continue;
+
+                    string text = clean.ToString().Trim();
+                    if (text.Length == 0)
+                    {
+                        // 纯空行才断开注释；整行只有注释不算空行
+                        if (!hadComment)
+                            pending.Clear();
+                        continue;
+                    }
+
+                    string note = pending.Count > 0 ? string.Join("\n", pending) : null;
+                    note = ConcatNote(note, inline);
+                    pending.Clear();
+
+                    starts.Add(sb.Length);
+                    notes.Add(note);
+                    sb.Append(text).Append('\n');
                 }
 
                 _text = sb.ToString();
+                _lineStarts = starts.ToArray();
+                _lineNotes = notes.ToArray();
                 _pos = 0;
                 Skip();
                 TreeNode root;
@@ -190,6 +319,49 @@ namespace MarkdownKit.PlantUml
                 _diagram.Roots.Add(root);
                 _diagram.Known = root.Rows.Count > 0 ? 1 : 0;
                 _diagram.Unknown = 0;
+            }
+
+            /// <summary>每行内容在拼接文本里的起始偏移，以及该行的说明。</summary>
+            private int[] _lineStarts;
+            private string[] _lineNotes;
+
+            private static void AppendBlockLine(StringBuilder block, string part)
+            {
+                string text = part.Trim();
+                if (text.Length == 0 && block.Length == 0)
+                    return;
+                if (block.Length > 0)
+                    block.Append('\n');
+                block.Append(text);
+            }
+
+            private static string ConcatNote(string above, string below)
+            {
+                if (string.IsNullOrEmpty(below))
+                    return string.IsNullOrEmpty(above) ? null : above;
+                return string.IsNullOrEmpty(above) ? below : above + "\n" + below;
+            }
+
+            /// <summary>按字符偏移二分查找所在行，返回该行的说明。</summary>
+            private string LookupNote(int offset)
+            {
+                int lo = 0;
+                int hi = _lineStarts.Length - 1;
+                int found = -1;
+                while (lo <= hi)
+                {
+                    int mid = (lo + hi) / 2;
+                    if (_lineStarts[mid] <= offset)
+                    {
+                        found = mid;
+                        lo = mid + 1;
+                    }
+                    else
+                    {
+                        hi = mid - 1;
+                    }
+                }
+                return found >= 0 ? _lineNotes[found] : null;
             }
 
             private string _text;
@@ -212,11 +384,12 @@ namespace MarkdownKit.PlantUml
                         _pos++;
                         continue;
                     }
+                    int keyPos = _pos;
                     string key = Key();
                     Skip();
                     if (_pos < _text.Length && _text[_pos] == ':')
                         _pos++;
-                    table.Rows.Add(Row(key));
+                    table.Rows.Add(Row(key, LookupNote(keyPos)));
                 }
                 return table;
             }
@@ -239,22 +412,23 @@ namespace MarkdownKit.PlantUml
                         _pos++;
                         continue;
                     }
-                    table.Rows.Add(Row((i++).ToString()));
+                    int itemPos = _pos;
+                    table.Rows.Add(Row((i++).ToString(), LookupNote(itemPos)));
                 }
                 return table;
             }
 
-            private TreeNode Row(string key)
+            private TreeNode Row(string key, string note)
             {
                 Skip();
                 if (_pos >= _text.Length)
-                    return new TreeNode { Text = key, Value = "" };
+                    return new TreeNode { Text = key, Value = "", Note = note };
                 char c = _text[_pos];
                 if (c == '{')
-                    return new TreeNode { Text = key, Value = "", Nested = Table() };
+                    return new TreeNode { Text = key, Value = "", Note = note, Nested = Table() };
                 if (c == '[')
-                    return new TreeNode { Text = key, Value = "", Nested = ArrayTable() };
-                return new TreeNode { Text = key, Value = Scalar() };
+                    return new TreeNode { Text = key, Value = "", Note = note, Nested = ArrayTable() };
+                return new TreeNode { Text = key, Value = Scalar(), Note = note };
             }
 
             private string Key()
