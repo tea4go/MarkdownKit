@@ -344,26 +344,89 @@ namespace MarkdownKit.PlantUml
 
             public void Run()
             {
-                // 先把源码里真正的内容行收集起来，带上缩进
-                var items = new List<KeyValuePair<int, string>>();
+                // 先把源码里真正的内容行收集起来，带上缩进；
+                // 键上方的注释先攒着，挂到紧挨着的下一个内容行上，遇空行即断开
+                var items = new List<YamlItem>();
+                var pending = new List<string>();
                 foreach (string raw in _lines)
                 {
-                    if (raw.Trim().Length == 0 || raw.TrimStart()[0] == '#')
-                        continue;
                     string t = raw.Trim();
+                    if (t.Length == 0)
+                    {
+                        pending.Clear();
+                        continue;
+                    }
+                    if (t[0] == '#')
+                    {
+                        pending.Add(CommentText(t));
+                        continue;
+                    }
                     if (t.StartsWith("@start", StringComparison.OrdinalIgnoreCase)
                         || t.StartsWith("@end", StringComparison.OrdinalIgnoreCase)
                         || t.StartsWith("!", StringComparison.Ordinal))
                         continue;
-                    items.Add(new KeyValuePair<int, string>(Indent(raw), t));
+                    items.Add(new YamlItem
+                    {
+                        Indent = Indent(raw),
+                        Text = t,
+                        Note = pending.Count == 0 ? null : string.Join("\n", pending)
+                    });
+                    pending.Clear();
                 }
 
                 int index = 0;
                 var table = new TreeNode { IsTable = true };
-                table.Rows.AddRange(ParseBlock(items, ref index, items.Count > 0 ? items[0].Key : 0));
+                table.Rows.AddRange(ParseBlock(items, ref index, items.Count > 0 ? items[0].Indent : 0));
                 _diagram.Roots.Add(table);
                 _diagram.Known = table.Rows.Count > 0 ? 1 : 0;
                 _diagram.Unknown = 0;
+            }
+
+            /// <summary>一条内容行；Note 是它上方紧邻的注释。</summary>
+            private sealed class YamlItem
+            {
+                public int Indent;
+                public string Text;
+                public string Note;
+            }
+
+            /// <summary>去掉注释行开头的 # 与空白；`## 分区` 也只留正文。</summary>
+            private static string CommentText(string trimmed)
+            {
+                int i = 0;
+                while (i < trimmed.Length && trimmed[i] == '#')
+                    i++;
+                return trimmed.Substring(i).Trim();
+            }
+
+            /// <summary>拆出行尾注释（`#` 前须是空白，引号内的不算），返回注释文字。</summary>
+            private static string SplitInlineComment(ref string text)
+            {
+                bool single = false;
+                bool doubleQuote = false;
+                for (int i = 0; i < text.Length; i++)
+                {
+                    char c = text[i];
+                    if (c == '\'' && !doubleQuote)
+                        single = !single;
+                    else if (c == '"' && !single && (i == 0 || text[i - 1] != '\\'))
+                        doubleQuote = !doubleQuote;
+                    else if (c == '#' && !single && !doubleQuote
+                        && (i == 0 || text[i - 1] == ' ' || text[i - 1] == '\t'))
+                    {
+                        string comment = text.Substring(i + 1).Trim();
+                        text = text.Substring(0, i).TrimEnd();
+                        return comment.Length == 0 ? null : comment;
+                    }
+                }
+                return null;
+            }
+
+            private static string MergeNote(string above, string inline)
+            {
+                if (string.IsNullOrEmpty(inline))
+                    return string.IsNullOrEmpty(above) ? null : above;
+                return string.IsNullOrEmpty(above) ? inline : above + "\n" + inline;
             }
 
             private static int Indent(string raw)
@@ -376,27 +439,28 @@ namespace MarkdownKit.PlantUml
             }
 
             /// <summary>同缩进的一组行。值是空、下一行缩进更深的，就是嵌套对象。</summary>
-            private List<TreeNode> ParseBlock(List<KeyValuePair<int, string>> items, ref int index, int indent)
+            private List<TreeNode> ParseBlock(List<YamlItem> items, ref int index, int indent)
             {
                 var rows = new List<TreeNode>();
                 while (index < items.Count)
                 {
-                    int cur = items[index].Key;
+                    int cur = items[index].Indent;
                     if (cur != indent)
                         break;
 
-                    string line = items[index].Value;
+                    string line = items[index].Text;
+                    string note = MergeNote(items[index].Note, SplitInlineComment(ref line));
                     index++;
 
                     // "- xxx" 列表项
                     if (line.StartsWith("- ", StringComparison.Ordinal) || line == "-")
                     {
                         string text = line.Length > 2 ? line.Substring(2).Trim() : "";
-                        var item = new TreeNode { Text = rows.Count.ToString(), Value = text };
-                        if (text.Length == 0 && index < items.Count && items[index].Key > cur)
+                        var item = new TreeNode { Text = rows.Count.ToString(), Value = text, Note = note };
+                        if (text.Length == 0 && index < items.Count && items[index].Indent > cur)
                         {
                             var nested = new TreeNode { IsTable = true };
-                            nested.Rows.AddRange(ParseBlock(items, ref index, items[index].Key));
+                            nested.Rows.AddRange(ParseBlock(items, ref index, items[index].Indent));
                             item.Nested = nested;
                         }
                         rows.Add(item);
@@ -408,11 +472,11 @@ namespace MarkdownKit.PlantUml
                         continue;
                     string key = line.Substring(0, colon).Trim();
                     string value = line.Substring(colon + 1).Trim();
-                    var row = new TreeNode { Text = key, Value = value };
-                    if (value.Length == 0 && index < items.Count && items[index].Key > cur)
+                    var row = new TreeNode { Text = key, Value = value, Note = note };
+                    if (value.Length == 0 && index < items.Count && items[index].Indent > cur)
                     {
                         var nested = new TreeNode { IsTable = true };
-                        nested.Rows.AddRange(ParseBlock(items, ref index, items[index].Key));
+                        nested.Rows.AddRange(ParseBlock(items, ref index, items[index].Indent));
                         row.Nested = nested;
                     }
                     rows.Add(row);

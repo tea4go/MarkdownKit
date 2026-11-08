@@ -27,6 +27,9 @@ namespace MarkdownKit.PlantUml
         /// <summary>JSON / YAML 的值；容器节点是空串，非表格节点是 null。</summary>
         public string Value;
 
+        /// <summary>YAML 行的注释说明；没有注释是 null。多行注释以换行连接。</summary>
+        public string Note;
+
         /// <summary>
         /// JSON / YAML 里一个对象/数组整体画成一张表：这时本节点的内容在 <see cref="Rows"/> 里，
         /// Text / Value 不用。表与表之间靠 <see cref="Nested"/> 连。

@@ -272,6 +272,12 @@ namespace MarkdownKit.PlantUml
             {
                 Rect r = row.Rect;
                 dc.DrawLine(style.Separator, new Point(r.X, r.Bottom), new Point(r.Right, r.Bottom));
+                // 说明与值之间只画值列的分隔线，键格保持合并单元格的观感
+                if (row.Note != null)
+                {
+                    double y = r.Y + row.NoteH;
+                    dc.DrawLine(style.Separator, new Point(r.X + row.KeyW, y), new Point(r.Right, y));
+                }
             }
 
             double padX = U(8);
@@ -280,7 +286,18 @@ namespace MarkdownKit.PlantUml
                 Rect r = row.Rect;
                 // 键靠右、值靠左：两列之间的留白集中在键格左侧，键和值自然夹紧读
                 DrawRightAligned(dc, row.Text, new Rect(r.X, r.Y, row.KeyW, r.Height), padX);
-                DrawLeftAligned(dc, row.Value, new Rect(r.X + row.KeyW, r.Y, r.Width - row.KeyW, r.Height), padX);
+                if (row.Note != null)
+                {
+                    DrawLeftAligned(dc, row.Note,
+                        new Rect(r.X + row.KeyW, r.Y, r.Width - row.KeyW, row.NoteH), padX);
+                    DrawLeftAligned(dc, row.Value,
+                        new Rect(r.X + row.KeyW, r.Y + row.NoteH, r.Width - row.KeyW, r.Height - row.NoteH), padX);
+                }
+                else
+                {
+                    DrawLeftAligned(dc, row.Value,
+                        new Rect(r.X + row.KeyW, r.Y, r.Width - row.KeyW, r.Height), padX);
+                }
             }
         }
 

@@ -17,6 +17,12 @@ namespace MarkdownKit.PlantUml
         /// <summary>JSON / YAML 的值格文字，非表格行是 null。</summary>
         public FormattedText Value;
 
+        /// <summary>YAML 行的注释说明，没有注释是 null。</summary>
+        public FormattedText Note;
+
+        /// <summary>注释行占的高度；值格从 Rect.Top + NoteH 开始。</summary>
+        public double NoteH;
+
         /// <summary>JSON / YAML 的键列宽度（含内边距），用来画中间那道竖线。</summary>
         public double KeyW;
 
@@ -551,18 +557,31 @@ namespace MarkdownKit.PlantUml
                     if (valueCell.Underline)
                         value.SetTextDecorations(TextDecorations.Underline);
 
+                    // 有注释的行一分为二：上行放说明，下行放值；键在整行里居中
+                    FormattedText note = null;
+                    double noteH = 0;
+                    if (!string.IsNullOrWhiteSpace(row.Note))
+                    {
+                        note = Text(row.Note, valueCell.Typeface, MarkdownTheme.Muted,
+                            valueCell.FontSize, _maxValueWidth);
+                        noteH = Math.Max(RowHeight, note.Height + U(4));
+                        valueW = Math.Max(valueW, note.Width + padX * 2);
+                    }
+
                     // 键靠右：折行后每一行也跟着靠右，别让末行甩到左半边
                     key.TextAlignment = TextAlignment.Right;
                     keyW = Math.Max(keyW, key.Width + padX * 2);
                     valueW = Math.Max(valueW, value.Width + padX * 2);
                     // 值里可以带换行（JSON 的 \n），行高得跟着内容长，不能一律按单行算
-                    row.H = Math.Max(RowHeight, Math.Max(key.Height, value.Height) + U(4));
+                    row.H = noteH + Math.Max(RowHeight, Math.Max(key.Height, value.Height) + U(4));
                     tableH += row.H;
                     _rowGeoms[row] = new TreeGeom
                     {
                         Source = row,
                         Text = key,
                         Value = value,
+                        Note = note,
+                        NoteH = noteH,
                         RowBackground = rowBackground,
                         KeyCell = keyCell,
                         ValueCell = valueCell
