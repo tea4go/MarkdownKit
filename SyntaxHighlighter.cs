@@ -218,10 +218,11 @@ namespace MarkdownKit
                 + "datetime timestamp boolean bool decimal numeric float double real blob"));
 
         private static readonly Syntax JsonStyle = new Syntax(
-            null, null, null,
-            new[] { "\"" },
-            Set("true false null"),
+            "//", "/*", "*/",
+            new[] { "\"", "'" },
+            Set("true false null Infinity NaN"),
             null,
+            propertyColon: true,
             quotedKey: true);
 
         // 标记语言没有关键字表：标签名和属性名靠 <...> 的结构定位，不用词表。
@@ -955,6 +956,9 @@ namespace MarkdownKit
 
                 case "json":
                 case "jsonc":
+                    return JsonStyle;
+
+                case "json5":
                     return JsonStyle;
 
                 case "html":
