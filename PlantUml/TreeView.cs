@@ -12,10 +12,14 @@ namespace MarkdownKit.PlantUml
     /// WBS 是竖着长的树：矩形框，父子之间走折线（下 → 横 → 下）。
     /// JSON/YAML 的节点是"键 | 值"两列表格，嵌套对象从值格用虚线箭头连出去。
     /// </summary>
-    internal sealed class TreeView : FrameworkElement
+    internal sealed class TreeView : FrameworkElement, IZoomableView
     {
         /// <summary>两侧要扣掉的宽度：预览区左右内边距加竖直滚动条。</summary>
         private const double SideMargin = 40;
+
+        /// <summary>手动缩放的上下限，相对原始尺寸。下限放得很低，好让大文件的自适应倍率还能再缩小。</summary>
+        private const double MinZoom = 0.01;
+        private const double MaxZoom = 4;
 
         /// <summary>JSON / YAML 名称列最多占可用宽度的比例，超出折行。</summary>
         private const double KeyWidthRatio = 0.2;
@@ -31,6 +35,8 @@ namespace MarkdownKit.PlantUml
         private TreeLayout _layout;
         private double _layoutLimit = double.NaN;
         private double _scale = 1;
+        /// <summary>固定倍率（相对原始尺寸）；0 表示按预览区宽度自适应。</summary>
+        private double _zoom;
 
         private readonly Brush _fill;
         private readonly Brush _border;
@@ -46,6 +52,48 @@ namespace MarkdownKit.PlantUml
         {
             get { return (double)GetValue(AvailableWidthProperty); }
             set { SetValue(AvailableWidthProperty, value); }
+        }
+
+        public double Zoom
+        {
+            get { return _zoom; }
+            set
+            {
+                double zoom = value <= 0
+                    ? 0
+                    : Math.Max(MinZoom, Math.Min(MaxZoom, value));
+                if (Math.Abs(zoom - _zoom) < 1e-6)
+                    return;
+                _zoom = zoom;
+                // 倍率只影响显示尺寸，不用重排：不动 _layout，只重新测量 / 绘制
+                InvalidateMeasure();
+                InvalidateVisual();
+            }
+        }
+
+        public double ScalePercent
+        {
+            get { return _scale * 100; }
+        }
+
+        public double DisplayWidth
+        {
+            get { return _layout == null ? 0 : _layout.Width * _scale; }
+        }
+
+        public void ZoomIn()
+        {
+            Zoom = _scale * 1.25;
+        }
+
+        public void ZoomOut()
+        {
+            Zoom = _scale / 1.25;
+        }
+
+        public void ActualSize()
+        {
+            Zoom = 1;
         }
 
         public TreeView(TreeDiagram diagram, double fontSize, FrameworkElement host)
@@ -129,13 +177,11 @@ namespace MarkdownKit.PlantUml
 
             double width = _layout.Width;
             double height = _layout.Height;
-            if (!double.IsInfinity(limit) && limit > 0 && width > limit)
-            {
-                _scale = limit / width;
-                return new Size(limit, height * _scale);
-            }
-            _scale = 1;
-            return new Size(width, height);
+            // 手动倍率优先；否则按可用宽度自适应（只缩不放，小图保持原始尺寸）
+            _scale = _zoom > 0
+                ? _zoom
+                : (!double.IsInfinity(limit) && limit > 0 && width > limit ? limit / width : 1);
+            return new Size(width * _scale, height * _scale);
         }
 
         protected override void OnRender(DrawingContext dc)
