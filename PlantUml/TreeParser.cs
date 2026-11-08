@@ -181,24 +181,38 @@ namespace MarkdownKit.PlantUml
                 bool blockIsLeading = false;
                 int blockStartLine = -1;
                 int lineNo = -1;
+                bool inString = false;
+                char stringQuote = '"';
+                bool escape = false;
 
                 foreach (string raw in _lines)
                 {
                     lineNo++;
                     string line = raw;
+
+                    // 上一行末尾是反斜杠：字符串跨行延续，行尾的 \ 已吃掉换行；
+                    // 没有续行标记却仍未闭合的，宽松复位，避免吞掉后面的行
+                    if (inString)
+                    {
+                        if (escape)
+                            escape = false;
+                        else
+                            inString = false;
+                    }
+
                     string trimmed = line.Trim();
-                    if (trimmed.StartsWith("@start", StringComparison.OrdinalIgnoreCase)
-                        || trimmed.StartsWith("@end", StringComparison.OrdinalIgnoreCase)
-                        || trimmed.StartsWith("!", StringComparison.Ordinal))
+                    if (!inString
+                        && (trimmed.StartsWith("@start", StringComparison.OrdinalIgnoreCase)
+                            || trimmed.StartsWith("@end", StringComparison.OrdinalIgnoreCase)
+                            || trimmed.StartsWith("!", StringComparison.Ordinal)))
                         continue;
-                    if (line.Length > 0 && line[0] == '\'')
+                    if (!inString && line.Length > 0 && line[0] == '\''
+                        && !LooksLikeSingleQuotedData(line))
                         continue;
 
                     var clean = new StringBuilder();
                     string inline = null;
                     bool hadComment = false;
-                    bool inString = false;
-                    bool escape = false;
 
                     for (int i = 0; i < line.Length;)
                     {
@@ -233,15 +247,16 @@ namespace MarkdownKit.PlantUml
                                 escape = false;
                             else if (c == '\\')
                                 escape = true;
-                            else if (c == '"')
+                            else if (c == stringQuote)
                                 inString = false;
                             i++;
                             continue;
                         }
 
-                        if (c == '"')
+                        if (c == '"' || c == '\'')
                         {
                             inString = true;
+                            stringQuote = c;
                             clean.Append(c);
                             i++;
                             continue;
@@ -440,7 +455,7 @@ namespace MarkdownKit.PlantUml
             private string Key()
             {
                 Skip();
-                if (_pos < _text.Length && _text[_pos] == '"')
+                if (_pos < _text.Length && (_text[_pos] == '"' || _text[_pos] == '\''))
                     return Scalar();
                 int start = _pos;
                 while (_pos < _text.Length && _text[_pos] != ':' && _text[_pos] != ',' && _text[_pos] != '}')
@@ -448,16 +463,65 @@ namespace MarkdownKit.PlantUml
                 return _text.Substring(start, _pos - start).Trim();
             }
 
+            // 列首的单引号既可能是 PlantUML 注释，也可能是 JSON5 顶格的单引号键/值。
+            // 右引号后面只允许空白再跟 : , ] } / 或行尾，才按数据行处理，否则当注释跳过。
+            // 行内没有右引号时，行尾未转义的反斜杠表示字符串续到下一行，也算数据行。
+            private static bool LooksLikeSingleQuotedData(string line)
+            {
+                bool escape = false;
+                int closing = -1;
+                for (int i = 1; i < line.Length; i++)
+                {
+                    char c = line[i];
+                    if (escape)
+                    {
+                        escape = false;
+                        continue;
+                    }
+                    if (c == '\\')
+                    {
+                        escape = true;
+                        continue;
+                    }
+                    if (c == '\'')
+                    {
+                        closing = i;
+                        break;
+                    }
+                }
+
+                if (closing < 0)
+                {
+                    int j = line.Length - 1;
+                    while (j >= 0 && (line[j] == ' ' || line[j] == '\t' || line[j] == '\r'))
+                        j--;
+                    int backslashes = 0;
+                    for (; j >= 0 && line[j] == '\\'; j--)
+                        backslashes++;
+                    return backslashes % 2 == 1;
+                }
+
+                for (int i = closing + 1; i < line.Length; i++)
+                {
+                    char c = line[i];
+                    if (c == ' ' || c == '\t' || c == '\r')
+                        continue;
+                    return c == ':' || c == ',' || c == ']' || c == '}' || c == '/' || c == '#';
+                }
+                return true;
+            }
+
             private string Scalar()
             {
                 Skip();
                 if (_pos >= _text.Length)
                     return "";
-                if (_text[_pos] == '"')
+                char quote = _text[_pos];
+                if (quote == '"' || quote == '\'')
                 {
                     _pos++;
                     var sb = new StringBuilder();
-                    while (_pos < _text.Length && _text[_pos] != '"')
+                    while (_pos < _text.Length && _text[_pos] != quote && _text[_pos] != '\n')
                     {
                         if (_text[_pos] == '\\' && _pos + 1 < _text.Length)
                         {
@@ -470,6 +534,12 @@ namespace MarkdownKit.PlantUml
                                 case 'b': sb.Append('\b'); break;
                                 case 'f': sb.Append('\f'); break;
                                 case 'u': AppendUnicode(sb); break;
+                                case '\n': break;   // JSON5 行尾 \ 续行，换行不进入值
+                                // Parse 已把 CRLF 归一化为 LF，这里只是防御。
+                                case '\r':
+                                    if (_pos + 1 < _text.Length && _text[_pos + 1] == '\n')
+                                        _pos++;
+                                    break;
                                 default: sb.Append(_text[_pos]); break;
                             }
                         }
