@@ -195,12 +195,13 @@ namespace MarkdownKit.PlantUml
                     }
 
                     string trimmed = line.Trim();
-                    if (trimmed.StartsWith("@start", StringComparison.OrdinalIgnoreCase)
-                        || trimmed.StartsWith("@end", StringComparison.OrdinalIgnoreCase)
-                        || trimmed.StartsWith("!", StringComparison.Ordinal))
+                    if (!inString
+                        && (trimmed.StartsWith("@start", StringComparison.OrdinalIgnoreCase)
+                            || trimmed.StartsWith("@end", StringComparison.OrdinalIgnoreCase)
+                            || trimmed.StartsWith("!", StringComparison.Ordinal)))
                         continue;
                     if (!inString && line.Length > 0 && line[0] == '\''
-                        && !HasClosingSingleQuote(line))
+                        && !LooksLikeSingleQuotedData(line))
                         continue;
 
                     var clean = new StringBuilder();
@@ -456,11 +457,13 @@ namespace MarkdownKit.PlantUml
                 return _text.Substring(start, _pos - start).Trim();
             }
 
-            // 列首的单引号既可能是 PlantUML 注释，也可能是 JSON5 顶格的单引号键/值；
-            // 行内能找到未转义的配对右引号就按数据行处理，否则当注释跳过。
-            private static bool HasClosingSingleQuote(string line)
+            // 列首的单引号既可能是 PlantUML 注释，也可能是 JSON5 顶格的单引号键/值。
+            // 右引号后面只允许空白再跟 : , ] } / 或行尾，才按数据行处理，否则当注释跳过。
+            // 行内没有右引号时，行尾未转义的反斜杠表示字符串续到下一行，也算数据行。
+            private static bool LooksLikeSingleQuotedData(string line)
             {
                 bool escape = false;
+                int closing = -1;
                 for (int i = 1; i < line.Length; i++)
                 {
                     char c = line[i];
@@ -475,9 +478,31 @@ namespace MarkdownKit.PlantUml
                         continue;
                     }
                     if (c == '\'')
-                        return true;
+                    {
+                        closing = i;
+                        break;
+                    }
                 }
-                return false;
+
+                if (closing < 0)
+                {
+                    int j = line.Length - 1;
+                    while (j >= 0 && (line[j] == ' ' || line[j] == '\t' || line[j] == '\r'))
+                        j--;
+                    int backslashes = 0;
+                    for (; j >= 0 && line[j] == '\\'; j--)
+                        backslashes++;
+                    return backslashes % 2 == 1;
+                }
+
+                for (int i = closing + 1; i < line.Length; i++)
+                {
+                    char c = line[i];
+                    if (c == ' ' || c == '\t' || c == '\r')
+                        continue;
+                    return c == ':' || c == ',' || c == ']' || c == '}' || c == '/';
+                }
+                return true;
             }
 
             private string Scalar()
@@ -490,7 +515,7 @@ namespace MarkdownKit.PlantUml
                 {
                     _pos++;
                     var sb = new StringBuilder();
-                    while (_pos < _text.Length && _text[_pos] != quote)
+                    while (_pos < _text.Length && _text[_pos] != quote && _text[_pos] != '\n')
                     {
                         if (_text[_pos] == '\\' && _pos + 1 < _text.Length)
                         {
@@ -504,6 +529,7 @@ namespace MarkdownKit.PlantUml
                                 case 'f': sb.Append('\f'); break;
                                 case 'u': AppendUnicode(sb); break;
                                 case '\n': break;   // JSON5 行尾 \ 续行，换行不进入值
+                                // Parse 已把 CRLF 归一化为 LF，这里只是防御。
                                 case '\r':
                                     if (_pos + 1 < _text.Length && _text[_pos + 1] == '\n')
                                         _pos++;
