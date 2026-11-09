@@ -26,6 +26,23 @@ namespace MarkdownKit
         void ActualSize();
     }
 
+    /// <summary>
+    /// 支持在图上选中一段文字并复制的预览图（目前是树形图）。自绘的图不在
+    /// FlowDocument 的文本流里，宿主要把右键复制 / 翻译 / 全选和 Ctrl+C / Ctrl+A
+    /// 接到这个接口上，才能像普通预览一样取到文字。
+    /// </summary>
+    public interface ISelectableTextView
+    {
+        bool HasSelection { get; }
+
+        /// <summary>当前选中的纯文本；没有选区返回空串。</summary>
+        string SelectedText { get; }
+
+        void SelectAll();
+
+        void ClearSelection();
+    }
+
     /// <summary>从渲染好的 FlowDocument 里找可缩放图。结构化文本预览只有一张树形图。</summary>
     public static class MarkdownZoom
     {
