@@ -58,14 +58,14 @@ namespace MarkdownKit
         /// 都不开——单字符的 ~ 和 ^ 在正文里太常见（波浪线、LaTeX 片段），开了反而误伤。
         /// wiki 链接是自己写的扩展（Markdig 没带），同样只插一个认 [ 的行内解析器。
         /// </summary>
-        private static readonly MarkdownPipeline Pipeline =
+        internal static readonly MarkdownPipeline Pipeline =
             new MarkdownPipelineBuilder().UsePipeTables().UseYamlFrontMatter().UseMathematics()
                 .UseFootnotes().UseTaskLists()
                 .UseEmphasisExtras(EmphasisExtraOptions.Strikethrough | EmphasisExtraOptions.Marked)
                 .Use<WikiLinkExtension>().Build();
 
         /// <summary>图片相对路径的基准目录（当前文档所在目录），只在一次 Render 期间有效。</summary>
-        private static string _imageBaseDir;
+        internal static string _imageBaseDir;
 
         /// <summary>
         /// 文档库放图片的固定目录名。像云上笔记这样的工具把附件统一堆在库根的 files 下，
@@ -93,19 +93,19 @@ namespace MarkdownKit
         public static bool SynchronousRemoteImages;
 
         /// <summary>预览区控件，图片宽度按它自适应，只在一次 Render 期间有效。</summary>
-        private static FrameworkElement _imageHost;
+        internal static FrameworkElement _imageHost;
 
         /// <summary>站内链接（[[name]]、相对 .md、#锚点）的点开动作，只在一次 Render 期间有效。</summary>
-        private static Action<PreviewLinkTarget> _linkOpener;
+        internal static Action<PreviewLinkTarget> _linkOpener;
 
         /// <summary>
         /// 本轮渲染里每个脚注编号的正文引用（同一条脚注可能被引用多次），只在一次 Render 期间有效。
         /// 引用排在正文里、条目排在文末，渲染引用时目标还没排出来，两头都先登记着，见 LinkFootnotes。
         /// </summary>
-        private static Dictionary<int, List<Hyperlink>> _footnoteReferences;
+        internal static Dictionary<int, List<Hyperlink>> _footnoteReferences;
 
         /// <summary>本轮渲染里每个脚注编号在文末的条目容器，只在一次 Render 期间有效。</summary>
-        private static Dictionary<int, Section> _footnoteItems;
+        internal static Dictionary<int, Section> _footnoteItems;
 
         /// <summary>H1~H6 相对正文字号的倍数。</summary>
         private static readonly double[] HeadingScale = { 1.7, 1.5, 1.3, 1.15, 1.05, 1.0 };
@@ -135,36 +135,22 @@ namespace MarkdownKit
             FrameworkElement imageHost, Action<PreviewLinkTarget> linkOpener,
             out List<HeadingInfo> outline, out List<BlockAnchor> anchors)
         {
-            outline = new List<HeadingInfo>();
-            anchors = new List<BlockAnchor>();
-            FlowDocument document = Base(fontSize);
-            if (string.IsNullOrEmpty(markdown))
-                return document;
-
-            // 图片要按当前文档目录解析相对路径、按预览区宽度定尺寸，这两个上下文一路穿到排版深处太啰嗦。
-            // 渲染是 UI 线程串行的一次调用、不会重入，就暂存在字段里，出来时清掉。
-            _imageBaseDir = baseDir;
-            _imageHost = imageHost;
-            _linkOpener = linkOpener;
-            _footnoteReferences = new Dictionary<int, List<Hyperlink>>();
-            _footnoteItems = new Dictionary<int, Section>();
+            // 整篇渲染就是一次跑完的分段会话；大文档预览可以拿会话自己分步推进
+            MarkdownRenderSession session = MarkdownRenderSession.Begin(
+                markdown, fontSize, baseDir, imageHost, linkOpener);
             try
             {
-                MarkdownDocument parsed = Markdig.Markdown.Parse(markdown, Pipeline);
-                // 先把 `{width=50%}` 这类宽度标记摘下来挂到图片节点上，再排版
-                ImageWidthAttribute.Apply(parsed);
-                AddBlocks(document.Blocks, parsed, fontSize, outline, anchors);
-                LinkFootnotes();
+                session.RenderNext(int.MaxValue, int.MaxValue);
+                session.Complete();
+                outline = session.Outline;
+                anchors = session.Anchors;
+                return session.Document;
             }
             finally
             {
-                _imageBaseDir = null;
-                _imageHost = null;
-                _linkOpener = null;
-                _footnoteReferences = null;
-                _footnoteItems = null;
+                // Complete 之后是空操作；渲染中途抛异常时把静态上下文还回去
+                session.Abort();
             }
-            return document;
         }
 
         /// <summary>
@@ -205,7 +191,7 @@ namespace MarkdownKit
         }
 
         /// <summary>文档外壳：主题字体、正文字号与颜色。纯文本和 Markdown 两条路共用，切过去时才不会跳版。</summary>
-        private static FlowDocument Base(double fontSize)
+        internal static FlowDocument Base(double fontSize)
         {
             return new FlowDocument
             {
@@ -252,7 +238,7 @@ namespace MarkdownKit
                 target.Add(deferredFootnotes);
         }
 
-        private static WpfBlock ToBlock(MdBlock block, double fontSize, List<HeadingInfo> outline, int depth = 0)
+        internal static WpfBlock ToBlock(MdBlock block, double fontSize, List<HeadingInfo> outline, int depth = 0)
         {
             // 文件头要排在 CodeBlock 前面：Markdig 的 YamlFrontMatterBlock 也归在代码块那一支，
             // 放到后面会被 Code() 抢去渲染成带复制按钮的代码块
@@ -354,7 +340,7 @@ namespace MarkdownKit
         }
 
         /// <summary>标题的层级、纯文本与源码行号。渲染路径下再补上段落引用。</summary>
-        private static HeadingInfo Describe(HeadingBlock heading)
+        internal static HeadingInfo Describe(HeadingBlock heading)
         {
             return new HeadingInfo
             {
@@ -2451,7 +2437,7 @@ namespace MarkdownKit
         /// 回链 ↩ 由 LinkFootnotes 补在条目末尾，只有一个箭头，点一下跳回正文里对应的引用处。
         /// 脚注本身是个容器块（里面可能有多段、列表），内容照样走 AddBlocks。
         /// </summary>
-        private static WpfBlock FootnoteList(FootnoteGroup group, double fontSize)
+        internal static WpfBlock FootnoteList(FootnoteGroup group, double fontSize)
         {
             // 脚注的字号比预览字号小 2 号（下限 9，免得缩到看不清）。
             // 注意必须把 FontSize 显式设在条目容器上：Paragraph() 不会给段落设字号，
@@ -2525,7 +2511,7 @@ namespace MarkdownKit
         /// 同一条脚注被引用多次时，每个引用都跳到条目，回链只认第一次——跳回最早那处就够了。
         /// 只定义没引用的脚注没有回链可给，也就不挂。
         /// </summary>
-        private static void LinkFootnotes()
+        internal static void LinkFootnotes()
         {
             if (_footnoteReferences == null || _footnoteItems == null)
                 return;
@@ -3193,6 +3179,254 @@ namespace MarkdownKit
                 dir = IOPath.GetDirectoryName(dir);
             }
             return null;
+        }
+    }
+
+    /// <summary>
+    /// 分段渲染会话：解析一次，按顶层块分批往同一个 FlowDocument 里追加。
+    /// 大文档预览先同步渲染首屏，其余留到界面空闲时分步推进，避免一次排版把窗口冻住。
+    /// 会话只在 UI 线程上用（返回的 FlowDocument 和元素都是 DispatcherObject）；
+    /// 渲染上下文沿用 MarkdownRenderer 的静态字段，Begin 时接管、Complete/Abort 时原样还回去。
+    /// </summary>
+    public sealed class MarkdownRenderSession : IDisposable
+    {
+        private readonly FlowDocument _document;
+        private readonly List<HeadingInfo> _outline = new List<HeadingInfo>();
+        private readonly List<BlockAnchor> _anchors = new List<BlockAnchor>();
+        private readonly List<MdBlock> _blocks = new List<MdBlock>();
+        private readonly Dictionary<int, HeadingInfo> _outlineByLine = new Dictionary<int, HeadingInfo>();
+        private readonly double _fontSize;
+        private MdBlock _footnoteGroup;
+
+        // 接管前的全局渲染上下文，结束时还回去
+        private readonly string _savedBaseDir;
+        private readonly FrameworkElement _savedImageHost;
+        private readonly Action<PreviewLinkTarget> _savedLinkOpener;
+        private readonly Dictionary<int, List<Hyperlink>> _savedReferences;
+        private readonly Dictionary<int, Section> _savedItems;
+
+        private int _index;
+        private int _lastRenderedLine = -1;
+        private bool _contentDone;
+        private bool _completed;
+        private bool _contextRestored;
+
+        private static MarkdownRenderSession _active;
+
+        public FlowDocument Document { get { return _document; } }
+
+        /// <summary>按文档顺序收好的完整大纲；分步渲染时逐条回填 Target。</summary>
+        public List<HeadingInfo> Outline { get { return _outline; } }
+
+        /// <summary>已经渲染出来的顶层块锚点，顺序与文档一致。</summary>
+        public List<BlockAnchor> Anchors { get { return _anchors; } }
+
+        /// <summary>全部正文、脚注和连线都完成。</summary>
+        public bool IsComplete { get { return _completed; } }
+
+        /// <summary>正文块已全部排完（脚注尚未补到文末）。</summary>
+        public bool IsContentDone { get { return _contentDone; } }
+
+        /// <summary>最后渲染出来的正文块所在源码行；还没渲染任何块时为 -1。</summary>
+        public int LastRenderedLine { get { return _lastRenderedLine; } }
+
+        private MarkdownRenderSession(string markdown, double fontSize, string baseDir,
+            FrameworkElement imageHost, Action<PreviewLinkTarget> linkOpener)
+        {
+            _fontSize = fontSize;
+            _document = MarkdownRenderer.Base(fontSize);
+
+            _savedBaseDir = MarkdownRenderer._imageBaseDir;
+            _savedImageHost = MarkdownRenderer._imageHost;
+            _savedLinkOpener = MarkdownRenderer._linkOpener;
+            _savedReferences = MarkdownRenderer._footnoteReferences;
+            _savedItems = MarkdownRenderer._footnoteItems;
+
+            MarkdownRenderer._imageBaseDir = baseDir;
+            MarkdownRenderer._imageHost = imageHost;
+            MarkdownRenderer._linkOpener = linkOpener;
+            MarkdownRenderer._footnoteReferences = new Dictionary<int, List<Hyperlink>>();
+            MarkdownRenderer._footnoteItems = new Dictionary<int, Section>();
+
+            if (string.IsNullOrEmpty(markdown))
+                return;
+
+            try
+            {
+                MarkdownDocument parsed = Markdig.Markdown.Parse(markdown, MarkdownRenderer.Pipeline);
+                // 宽度标记必须对整棵树跑一次，再按顶层块分批排版
+                ImageWidthAttribute.Apply(parsed);
+                CollectOutline(parsed, _outline);
+                foreach (HeadingInfo info in _outline)
+                    _outlineByLine[info.SourceLine] = info;
+                foreach (MdBlock block in parsed)
+                    _blocks.Add(block);
+            }
+            catch
+            {
+                RestoreContext();
+                throw;
+            }
+        }
+
+        /// <summary>开始一次分段渲染；已有未完成的会话会先作废，保证全局上下文不串。</summary>
+        public static MarkdownRenderSession Begin(string markdown, double fontSize, string baseDir,
+            FrameworkElement imageHost, Action<PreviewLinkTarget> linkOpener)
+        {
+            MarkdownRenderSession previous = _active;
+            if (previous != null)
+                previous.Abort();
+
+            var session = new MarkdownRenderSession(markdown, fontSize, baseDir, imageHost, linkOpener);
+            _active = session;
+            return session;
+        }
+
+        /// <summary>
+        /// 接着渲染下一批顶层块。maxBlocks/maxChars 谁先到就停，返回 true 表示正文已全部排完。
+        /// 脚注组统一留到 Complete 时补到文末，与整篇渲染的顺序一致。
+        /// </summary>
+        public bool RenderNext(int maxBlocks, int maxChars)
+        {
+            if (_completed || _contentDone)
+                return true;
+            if (maxBlocks <= 0)
+                maxBlocks = 1;
+            if (maxChars <= 0)
+                maxChars = int.MaxValue;
+
+            int count = 0;
+            int chars = 0;
+            try
+            {
+                while (_index < _blocks.Count)
+                {
+                    MdBlock block = _blocks[_index++];
+
+                    if (block is FootnoteGroup)
+                    {
+                        _footnoteGroup = block;
+                        continue;
+                    }
+
+                    // ToBlock 收集的标题先放临时表，再按行号回填到预收的完整大纲上
+                    var headings = new List<HeadingInfo>();
+                    WpfBlock rendered = MarkdownRenderer.ToBlock(block, _fontSize, headings, 0);
+                    if (rendered != null)
+                    {
+                        _document.Blocks.Add(rendered);
+                        _anchors.Add(new BlockAnchor { SourceLine = block.Line, Target = rendered });
+                        _lastRenderedLine = block.Line;
+                    }
+
+                    for (int i = 0; i < headings.Count; i++)
+                    {
+                        HeadingInfo info = headings[i];
+                        HeadingInfo seed;
+                        if (_outlineByLine.TryGetValue(info.SourceLine, out seed))
+                            seed.Target = info.Target;
+                    }
+
+                    count++;
+                    chars += Math.Max(0, block.Span.End - block.Span.Start);
+                    if (count >= maxBlocks || chars >= maxChars)
+                        break;
+                }
+            }
+            catch
+            {
+                Abort();
+                throw;
+            }
+
+            _contentDone = _index >= _blocks.Count;
+            return _contentDone;
+        }
+
+        /// <summary>一直渲染到 sourceLine 这一行已经排出来（含），返回是否到达目标。</summary>
+        public bool RenderUntil(int sourceLine, int maxBlocks, int maxChars)
+        {
+            while (!_contentDone && _lastRenderedLine < sourceLine)
+                RenderNext(maxBlocks, maxChars);
+            return _lastRenderedLine >= sourceLine;
+        }
+
+        /// <summary>补上脚注并接好引用回链；重复调用无副作用。</summary>
+        public void Complete()
+        {
+            if (_completed)
+                return;
+
+            RenderNext(int.MaxValue, int.MaxValue);
+            try
+            {
+                if (_footnoteGroup != null)
+                {
+                    WpfBlock footnotes = MarkdownRenderer.FootnoteList((FootnoteGroup)_footnoteGroup, _fontSize);
+                    if (footnotes != null)
+                        _document.Blocks.Add(footnotes);
+                }
+                MarkdownRenderer.LinkFootnotes();
+            }
+            finally
+            {
+                _completed = true;
+                _contentDone = true;
+                RestoreContext();
+                if (_active == this)
+                    _active = null;
+            }
+        }
+
+        /// <summary>作废会话：不接脚注、不连线，只把全局上下文还回去。</summary>
+        public void Abort()
+        {
+            if (_completed)
+                return;
+            _completed = true;
+            _contentDone = true;
+            RestoreContext();
+            if (_active == this)
+                _active = null;
+        }
+
+        public void Dispose()
+        {
+            Abort();
+        }
+
+        private void RestoreContext()
+        {
+            if (_contextRestored)
+                return;
+            _contextRestored = true;
+            MarkdownRenderer._imageBaseDir = _savedBaseDir;
+            MarkdownRenderer._imageHost = _savedImageHost;
+            MarkdownRenderer._linkOpener = _savedLinkOpener;
+            MarkdownRenderer._footnoteReferences = _savedReferences;
+            MarkdownRenderer._footnoteItems = _savedItems;
+        }
+
+        /// <summary>
+        /// 预收完整大纲。脚注组要挪到文末且内部标题不参与预览大纲，这里跳过，
+        /// 与整篇渲染时 FootnoteList 不收集标题的行为保持一致。
+        /// </summary>
+        private static void CollectOutline(ContainerBlock source, List<HeadingInfo> target)
+        {
+            foreach (MdBlock block in source)
+            {
+                var heading = block as HeadingBlock;
+                if (heading != null)
+                {
+                    target.Add(MarkdownRenderer.Describe(heading));
+                    continue;
+                }
+                if (block is FootnoteGroup)
+                    continue;
+                var container = block as ContainerBlock;
+                if (container != null)
+                    CollectOutline(container, target);
+            }
         }
     }
 
