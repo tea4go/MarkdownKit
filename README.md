@@ -2,7 +2,11 @@
 
 MarkdownKit 是一个面向 WPF 的 Markdown 渲染类库：输入 Markdown 文本，输出只读的 `FlowDocument`。解析交给 [Markdig](https://github.com/xoofx/markdig)，排版、配色、图表绘制全部在本地完成，不依赖浏览器、Node 或 Java。
 
-本库是 MdView 的渲染核心，也可以被其他 WPF 应用直接引用。
+本库是 [MdViewPro](https://gitee.com/tea4go/mdview) 的渲染核心，也可以被其他 WPF 应用直接引用。
+
+## 基于本项目开发的软件
+
+[MdViewPro](https://gitee.com/tea4go/mdview) 是 Windows 上的 Markdown 查看器与编辑器，编辑、分屏和整屏预览一体，也能查看 PDF、Office 文档与 JSON / YAML。它的 Markdown 预览由 MarkdownKit 渲染，编辑、文件管理、PDF / Office 预览和云端图床等能力则由宿主实现。
 
 ## 主要特性
 
