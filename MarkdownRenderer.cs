@@ -1821,7 +1821,7 @@ namespace MarkdownKit
                     {
                         Margin = new Thickness(0),
                         TextAlignment = cell.Alignment,
-                        FontWeight = cell.Header ? FontWeights.Bold : FontWeights.Normal
+                        FontWeight = cell.Header ? FontWeights.Bold : MarkdownTheme.PreviewFontWeight
                     };
                     AddHtmlInlines(paragraph.Inlines, cell.Html, fontSize);
                     rendered.Blocks.Add(paragraph);
@@ -1897,8 +1897,8 @@ namespace MarkdownKit
                         else if (name == "code")
                         {
                             span.FontFamily = MarkdownTheme.EditorFamily;
-                            // 默认重量保持继承（父级可能是 <b>），只有设置了粗体才覆盖
-                            if (MarkdownTheme.EditorFontWeight != FontWeights.Normal)
+                            // 默认重量（Normal/Medium）保持继承（父级可能是 <b>），只有勾选了粗体才覆盖
+                            if (MarkdownTheme.EditorFontWeight == FontWeights.Bold)
                                 span.FontWeight = MarkdownTheme.EditorFontWeight;
                         }
                         else
@@ -2176,8 +2176,8 @@ namespace MarkdownKit
                     FontFamily = MarkdownTheme.EditorFamily,
                     FontSize = fontSize * 0.95
                 };
-                // 默认重量保持继承（如 **`code`**），只有设置了粗体才覆盖
-                if (MarkdownTheme.EditorFontWeight != FontWeights.Normal)
+                // 默认重量（Normal/Medium）保持继承（如 **`code`**），只有勾选了粗体才覆盖
+                if (MarkdownTheme.EditorFontWeight == FontWeights.Bold)
                     span.FontWeight = MarkdownTheme.EditorFontWeight;
                 span.Inlines.Add(new Run(code.Content));
                 target.Add(span);
