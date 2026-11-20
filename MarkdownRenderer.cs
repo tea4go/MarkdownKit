@@ -929,8 +929,13 @@ namespace MarkdownKit
             };
 
             // 滚动条平时隐形，鼠标进到这个代码块上才浮现；挂个只作用于自家滚动条的隐式样式，
-            // 用透明度而不是 Visibility，免得显隐时把内容宽度挤一下
-            var scrollBarStyle = new Style(typeof(ScrollBar));
+            // 用透明度而不是 Visibility，免得显隐时把内容宽度挤一下。
+            // 必须 BasedOn 宿主应用级的 ScrollBar 样式：RichTextBox.Resources 里的隐式样式会
+            // 完全遮住上层样式，不继承就退回系统默认的粗滚动条，跟别处对不上。
+            var scrollBarStyle = new Style(typeof(ScrollBar))
+            {
+                BasedOn = Application.Current?.TryFindResource(typeof(ScrollBar)) as Style
+            };
             var scrollBarIdle = new DataTrigger
             {
                 Binding = new Binding("IsMouseOver")
