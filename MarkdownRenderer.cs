@@ -2174,7 +2174,7 @@ namespace MarkdownKit
             }
         }
 
-        private static void AddInlines(InlineCollection target, ContainerInline source, double fontSize)
+        private static void AddInlines(InlineCollection target, ContainerInline source, double fontSize, FontWeight? inheritedWeight = null)
         {
             if (source == null)
                 return;
@@ -2245,7 +2245,7 @@ namespace MarkdownKit
                         continue;
                     }
                 }
-                AddInline(sink, inline, fontSize);
+                AddInline(sink, inline, fontSize, inheritedWeight);
             }
 
             if (mark != null)
@@ -2344,38 +2344,43 @@ namespace MarkdownKit
         private const double InlineCodePadding = 10;
 
         /// <summary>
-        /// 行内代码左侧或右侧的 10px 留白。Inline 没有 Padding，只能垫一块同色的小 Border：
-        /// 高度按代码字体的行距算、底边贴行盒底（BaselineAlignment.Bottom），才能和 Span 底色的上下沿对齐。
-        /// 布局槽高度必须向上取整（Bottom 对齐时槽底贴行盒底，槽高是小数就会被布局取整挪动半像素），
-        /// 再把绘制裁回精确行高，补块才和文字底色一样高。
-        /// 宽度多画 1px、再用负边距朝文字那侧压 1px：布局仍占 10px，绘制却叠进 Span 底色里，
-        /// 不然两层的亚像素边缘之间会漏出一条亮缝，放大后像一条竖线。
-        /// 垫块用 UIElement 而不是空格，免得挤占字距、行末折行时多出空白；
-        /// 代价是纯文本复制时 WPF 会把对象记成一个空格（选中和代码内容本身不受影响）。
+        /// 行内代码：整块配色底由一个 Border 包住文字，底色和文字同一次绘制，
+        /// 上下沿天然齐平，不会像两侧垫块那样出现亚像素错位。
+        /// 左右留白就是 Border 的 Padding。
+        /// 代价：文字装在 UIElement 里，不参与 FlowDocument 选择，纯文本复制时会记成一个空格。
         /// </summary>
-        private static InlineUIContainer InlineCodePad(double codeSize, bool left)
+        private static InlineUIContainer InlineCodeBox(string content, double codeSize, FontWeight? inheritedWeight)
         {
             double height = MarkdownTheme.EditorFamily.LineSpacing * codeSize;
             if (double.IsNaN(height) || double.IsInfinity(height) || height <= 0)
                 height = codeSize * 1.2;
-            double drawWidth = InlineCodePadding + 1;
-            var pad = new Border
+            var text = new TextBlock
             {
-                Width = drawWidth,
-                Height = Math.Ceiling(height),
-                Margin = left
-                    ? new Thickness(0, 0, -1, 0)
-                    : new Thickness(-1, 0, 0, 0),
+                Text = content,
+                FontFamily = MarkdownTheme.EditorFamily,
+                FontSize = codeSize,
+                Foreground = MarkdownTheme.Markdown.InlineCodeText,
+                // 行高锁定为代码字体的行距：Border 高度与原先的文字底色一致，块内也不会多出上下空白
+                LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
+                LineHeight = height,
+                TextWrapping = TextWrapping.NoWrap
+            };
+            if (MarkdownTheme.EditorFontWeight == FontWeights.Bold)
+                text.FontWeight = MarkdownTheme.EditorFontWeight;
+            else if (inheritedWeight.HasValue)
+                text.FontWeight = inheritedWeight.Value;
+            var box = new Border
+            {
                 Background = MarkdownTheme.Markdown.InlineCodeBackground,
-                // 画到槽底为止，再裁回文字底色的精确行高，上下边缘才会齐
-                Clip = new RectangleGeometry(new Rect(0, 0, drawWidth, height)),
-                // 垫块只是背景，不该拦截鼠标：否则拖选经过这里会断、行内链接点垫块没反应
+                Padding = new Thickness(InlineCodePadding, 0, InlineCodePadding, 0),
+                Child = text,
+                // 代码内容不再可选，但也不该拦截鼠标：拖选经过这里不应中断
                 IsHitTestVisible = false
             };
-            return new InlineUIContainer(pad) { BaselineAlignment = BaselineAlignment.Bottom };
+            return new InlineUIContainer(box) { BaselineAlignment = BaselineAlignment.Bottom };
         }
 
-        private static void AddInline(InlineCollection target, MdInline inline, double fontSize)
+        private static void AddInline(InlineCollection target, MdInline inline, double fontSize, FontWeight? inheritedWeight = null)
         {
             var literal = inline as LiteralInline;
             if (literal != null)
@@ -2387,25 +2392,12 @@ namespace MarkdownKit
             var code = inline as CodeInline;
             if (code != null)
             {
-                // 行内代码用 Span 而不是 InlineUIContainer 包一层 Border：后者装的是 UIElement，
-                // 里面的文字不参与 FlowDocument 的选择（选择只覆盖 TextElement），
-                // 行内代码就既选不中也复制不了。代价是 Inline 没有 Padding / CornerRadius，
-                // 四个角只能是直角，左右留白也只能靠两侧垫同色小 Border 撑出来。
+                // 整块用一个 Border 包住文字：底色与文字一次绘制，上下沿不会错位；
+                // 代价是文字不参与 FlowDocument 选择（选择只覆盖 TextElement），
+                // 行内代码选不中也复制不了，纯文本里只留一个空格。
                 double codeSize = fontSize * 0.95;
-                var span = new Span
-                {
-                    Background = MarkdownTheme.Markdown.InlineCodeBackground,
-                    Foreground = MarkdownTheme.Markdown.InlineCodeText,
-                    FontFamily = MarkdownTheme.EditorFamily,
-                    FontSize = codeSize
-                };
-                // 默认重量（Normal/Medium）保持继承（如 **`code`**），只有勾选了粗体才覆盖
-                if (MarkdownTheme.EditorFontWeight == FontWeights.Bold)
-                    span.FontWeight = MarkdownTheme.EditorFontWeight;
-                span.Inlines.Add(InlineCodePad(codeSize, true));
-                span.Inlines.Add(new Run(code.Content));
-                span.Inlines.Add(InlineCodePad(codeSize, false));
-                target.Add(span);
+                // 行内代码包成 UIElement 后不再继承外层 Span 的字重，粗体上下文（如 **`code`**）要显式传进来
+                target.Add(InlineCodeBox(code.Content, codeSize, inheritedWeight));
                 return;
             }
 
@@ -2423,7 +2415,8 @@ namespace MarkdownKit
                     span.FontWeight = FontWeights.Bold;
                 else
                     span.FontStyle = FontStyles.Italic;
-                AddInlines(span.Inlines, emphasis, fontSize);
+                AddInlines(span.Inlines, emphasis, fontSize,
+                    emphasis.DelimiterCount >= 2 ? FontWeights.Bold : inheritedWeight);
                 target.Add(span);
                 return;
             }
