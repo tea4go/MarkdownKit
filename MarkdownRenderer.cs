@@ -1508,12 +1508,68 @@ namespace MarkdownKit
             };
         }
 
+        /// <summary>表格圆角卡片的圆角半径。</summary>
+        private const double TableCornerRadius = 16;
+
         /// <summary>
-        /// 表格。用 WPF 原生的 Table 排，而不是把 Grid 塞进 BlockUIContainer：
-        /// BlockUIContainer 里装的是 UIElement，里面的文字不参与 FlowDocument 的选择
-        /// （选择只覆盖 TextElement），表格内容就既选不中、也复制不了。
-        /// 原生 Table 的单元格是 TextElement，选中和 Ctrl+C 跟正文一样好使。
-        /// 代价是 Block 没有 CornerRadius，外框只能是直角，拿不到圆角卡片那圈效果。
+        /// 给表格套一层圆角卡片。Table 是 Block、没有 CornerRadius，只能换成
+        /// BlockUIContainer 包 Border；但 Border 里装的是 UIElement，表格文字会退出
+        /// FlowDocument 的选择，所以和代码块一样嵌一个只读 RichTextBox 负责选中复制。
+        /// 格子底色在四角会被画成直角，用圆角 Clip 裁一下，卡片外框才干净。
+        /// </summary>
+        private static WpfBlock TableCard(Table table, double fontSize)
+        {
+            var document = new FlowDocument(table)
+            {
+                FontFamily = MarkdownTheme.PreviewFamily,
+                FontSize = fontSize,
+                FontWeight = MarkdownTheme.PreviewFontWeight,
+                Foreground = MarkdownTheme.Markdown.Text,
+                // 不限列宽，否则 FlowDocument 默认按 400 宽把表格拆成好几栏
+                ColumnWidth = double.PositiveInfinity,
+                PagePadding = new Thickness(0)
+            };
+            var text = new RichTextBox
+            {
+                IsReadOnly = true,
+                IsReadOnlyCaretVisible = false,
+                IsTabStop = false,
+                BorderThickness = new Thickness(0),
+                Background = Brushes.Transparent,
+                Padding = new Thickness(0),
+                VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Document = document
+            };
+            // 页宽跟随可视宽度：星号列（HTML 表格）才能按面板宽度收放；
+            // 圆角 Clip 把格子底色在四角裁掉，圆角外框才不会被直角底色顶破
+            double lastWidth = -1;
+            text.SizeChanged += (sender, e) =>
+            {
+                if (e.NewSize.Width <= 0 || e.NewSize.Height <= 0)
+                    return;
+                if (Math.Abs(e.NewSize.Width - lastWidth) >= 0.5)
+                {
+                    lastWidth = e.NewSize.Width;
+                    document.PageWidth = e.NewSize.Width;
+                }
+                text.Clip = new RectangleGeometry(
+                    new Rect(0, 0, e.NewSize.Width, e.NewSize.Height),
+                    TableCornerRadius - 1, TableCornerRadius - 1);
+            };
+            return new BlockUIContainer(new Border
+            {
+                BorderBrush = MarkdownTheme.Markdown.TableBorder,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(TableCornerRadius),
+                Margin = new Thickness(0, 0, 0, fontSize * 0.5),
+                Child = text
+            });
+        }
+
+        /// <summary>
+        /// 表格。单元格用原生 Table 排，文字像素与格子对齐由它负责，
+        /// 外层再套 16px 圆角卡片（见 <see cref="TableCard"/>）。
         /// </summary>
         private static WpfBlock Table(MdTable source, double fontSize)
         {
@@ -1542,14 +1598,10 @@ namespace MarkdownKit
             var table = new Table
             {
                 // 单元格紧贴，隔行底色连成整条，网格线也由格子自己画。
-                // 这里**不能**再给 Table 设 Background：实测整表一层不透明底色会把 WPF 的选区
-                // 高亮整个吞掉（选区里含表格时，连选区里的段落部分都不再画高亮），
-                // 于是「表格里的文字选不中」——其实选中了、也复制得到，只是完全看不见。
+                // 这里**不能**再给 Table 设 Background：实测整表一层不透明底色会把选区
+                // 高亮整个吞掉，于是「表格里的文字选不中」——其实选中了、也复制得到，只是看不见。
                 // 表格的底色改由每个格子自己铺，见下面 rowBackground。
-                CellSpacing = 0,
-                BorderBrush = MarkdownTheme.Markdown.TableBorder,
-                BorderThickness = new Thickness(1),
-                Margin = new Thickness(0, 0, 0, fontSize * 0.5)
+                CellSpacing = 0
             };
             // 各列宽度按内容估算成像素再按宿主宽度收放。这里**不能**用星号列：
             // 单元格里长代码 token 的最小内容宽度会把整表撑出页面，排到后面的列只剩 0 宽，
@@ -1650,7 +1702,7 @@ namespace MarkdownKit
                 group.Rows.Add(row);
             }
 
-            return table;
+            return TableCard(table, fontSize);
         }
 
         /// <summary>
@@ -1884,10 +1936,7 @@ namespace MarkdownKit
 
             var table = new Table
             {
-                CellSpacing = 0,
-                BorderBrush = MarkdownTheme.Markdown.TableBorder,
-                BorderThickness = new Thickness(1),
-                Margin = new Thickness(0, 0, 0, fontSize * 0.5)
+                CellSpacing = 0
             };
             for (int i = 0; i < columnCount; i++)
             {
@@ -1944,7 +1993,7 @@ namespace MarkdownKit
                 }
                 group.Rows.Add(row);
             }
-            return table;
+            return TableCard(table, fontSize);
         }
 
         /// <summary>单元格 HTML 的纯文字（去标签、还原实体），只用来估列宽。</summary>
@@ -2142,7 +2191,7 @@ namespace MarkdownKit
             return width;
         }
 
-        /// <summary>一个单元格的底色、网格线、内边距。只画右边和下边：外框交给 Table 自己。</summary>
+        /// <summary>一个单元格的底色、网格线、内边距。只画右边和下边：外框交给圆角卡片。</summary>
         private static TableCell NewCell(Brush background, double fontSize,
             int cellIndex, int columnCount, bool lastRow)
         {
