@@ -9,6 +9,7 @@ namespace MarkdownKit.Mermaid
     ///   sequenceDiagram —— 翻译成 PlantUML 的时序图模型，布局和绘制直接复用 SequenceView；
     ///   flowchart / graph —— 自己的分层布局 + Canvas 绘制；
     ///   pie —— 扇形 + 图例，Canvas 绘制。
+    /// 另外兼容 flowchart.js 的 id=&gt;type: label 语法（见 TryCreateFlowchartJsOnly），复用同一套流程图视图。
     /// 其他图型（classDiagram / stateDiagram / gantt / journey …）返回 null，
     /// 调用方退回普通代码块显示源码。
     /// </summary>
@@ -53,7 +54,12 @@ namespace MarkdownKit.Mermaid
                 }
 
                 // 没写图种头（如省略 sequenceDiagram）时，整段看起来就是时序图也照样画
-                return TryCreateSequence(source, fontSize, host);
+                FrameworkElement sequence = TryCreateSequence(source, fontSize, host);
+                if (sequence != null)
+                    return sequence;
+
+                // 标了 mermaid、实际写的是 flowchart.js（id=>type: label）
+                return TryCreateFlowchartJsOnly(source, fontSize, host);
             }
             catch (Exception)
             {
@@ -139,6 +145,72 @@ namespace MarkdownKit.Mermaid
                 return false;
             }
             return false;
+        }
+
+        /// <summary>
+        /// 只认 flowchart.js。给 ```flow / ```flowchart 和没标语言的裸代码块用：首行必须是
+        /// id=&gt;type: label 这种节点定义，且解析出至少两个节点和一条连线，避免误伤普通代码。
+        /// </summary>
+        public static FrameworkElement TryCreateFlowchartJsOnly(string source, double fontSize, FrameworkElement host)
+        {
+            if (string.IsNullOrEmpty(source))
+                return null;
+
+            fontSize = MarkdownTheme.DiagramFontSize;
+            try
+            {
+                if (!FirstLineStartsFlowchartJs(source))
+                    return null;
+
+                Flowchart chart = FlowchartJsParser.Parse(source);
+                if (chart.Nodes.Count < 2 || chart.Edges.Count < 1)
+                    return null;
+
+                return new MermaidFlowchartView(chart, fontSize, host);
+            }
+            catch (Exception)
+            {
+            }
+            return null;
+        }
+
+        /// <summary>首条有效行是不是 flowchart.js 的节点定义（id=&gt;type: label）。</summary>
+        private static bool FirstLineStartsFlowchartJs(string source)
+        {
+            string[] lines = source.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+            foreach (string raw in lines)
+            {
+                string line = raw.Trim();
+                if (line.Length == 0 || line.StartsWith("%%", StringComparison.Ordinal))
+                    continue;
+                return IsFlowchartJsDefinition(line);
+            }
+            return false;
+        }
+
+        /// <summary>id=&gt;type[: label]，要求 id 和 type 都是纯标识符，挡掉 JS 的 x=&gt;x*2 之类。</summary>
+        private static bool IsFlowchartJsDefinition(string line)
+        {
+            int at = line.IndexOf("=>", StringComparison.Ordinal);
+            if (at <= 0 || !IsIdentifier(line.Substring(0, at).Trim()))
+                return false;
+
+            string rest = line.Substring(at + 2).Trim();
+            int colon = rest.IndexOf(':');
+            string type = (colon < 0 ? rest : rest.Substring(0, colon)).Trim();
+            return IsIdentifier(type);
+        }
+
+        private static bool IsIdentifier(string text)
+        {
+            if (text.Length == 0)
+                return false;
+            foreach (char c in text)
+            {
+                if (!char.IsLetterOrDigit(c) && c != '_' && c != '-')
+                    return false;
+            }
+            return true;
         }
 
         /// <summary>第一行有效内容里的第一个词，转小写：sequenceDiagram → sequencediagram。</summary>

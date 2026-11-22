@@ -60,6 +60,7 @@
     <Compile Include="MarkdownResources.cs" />
     <Compile Include="MarkdownStyle.cs" />
     <Compile Include="MarkdownTheme.cs" />
+    <Compile Include="Mermaid/FlowchartJsParser.cs" />
     <Compile Include="Mermaid/MermaidFlowchart.cs" />
     <Compile Include="Mermaid/MermaidFlowchartView.cs" />
     <Compile Include="Mermaid/MermaidPie.cs" />
