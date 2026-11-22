@@ -29,6 +29,7 @@ namespace MarkdownKit
         public Brush CodeVariable { get; set; }
         public Brush InlineCodeBackground { get; set; }
         public Brush InlineCodeText { get; set; }
+        public Brush InlineCodeBorder { get; set; }
         public Brush SegmentFill { get; set; }
         public Brush TableBackground { get; set; }
         public Brush TableBorder { get; set; }
@@ -64,6 +65,7 @@ namespace MarkdownKit
                 CodeVariable = Brush("#1B7C83"),
                 InlineCodeBackground = Brush("#FAE7A0"),
                 InlineCodeText = Brush("#263238"),
+                InlineCodeBorder = Brush("#7EA9C9"),
                 SegmentFill = Brush("#F1F8FF"),
                 TableBackground = Brush("#FFFFFF"),
                 TableBorder = Brush("#C8E1FF"),
@@ -101,6 +103,7 @@ namespace MarkdownKit
                 CodeVariable = Brush("#56D4DD"),
                 InlineCodeBackground = Brush("#3F444C"),
                 InlineCodeText = Brush("#839496"),
+                InlineCodeBorder = Brush("#1A7778"),
                 SegmentFill = Brush("#33383F"),
                 TableBackground = Brush("#002C37"),
                 TableBorder = Brush("#1A7778"),

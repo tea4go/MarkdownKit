@@ -285,7 +285,7 @@ The image directory, host control, link callback, and footnote registries are ke
 - Body and headings: `Text`, `Heading`, `HeadingRule1`, `HeadingRule2`, `Link`, `MarkBackground`.
 - Quotes: `QuoteText`, `QuoteBorder`, `QuoteBackground`.
 - Code: `CodeBackground`, `CodeBorder`, and token colors (keyword, string, comment, number, function, type, tag, attribute, property, section, variable).
-- Inline code: `InlineCodeBackground`, `InlineCodeText`.
+- Inline code: `InlineCodeBackground`, `InlineCodeText`, `InlineCodeBorder`.
 - Tables: `TableBackground`, `TableBorder`, `TableHeaderBackground`, `TableEvenRowBackground`.
 - Other: `SegmentFill`.
 
