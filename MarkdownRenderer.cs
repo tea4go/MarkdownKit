@@ -218,6 +218,8 @@ namespace MarkdownKit
             // 脚注定义那组在源码里可能夹在正文中间，但显示上要归到文末当参考文献。
             // Markdig 把它插在第一条定义所在的位置，这里先攒着，等这一层其余块排完再补到末尾。
             WpfBlock deferredFootnotes = null;
+            // 分页符的换页作用到下一块：WPF 只有 BreakPageBefore，没有 BreakPageAfter
+            bool pageBreakAfter = false;
             foreach (MdBlock block in source)
             {
                 WpfBlock rendered = ToBlock(block, fontSize, outline, depth);
@@ -228,14 +230,27 @@ namespace MarkdownKit
                     deferredFootnotes = rendered;
                     continue;
                 }
+                if (pageBreakAfter)
+                {
+                    rendered.BreakPageBefore = true;
+                    pageBreakAfter = false;
+                }
                 target.Add(rendered);
                 // 只有顶层那次调用带 anchors（嵌套的引用、列表项不传），粒度到段落，够定位用
                 if (anchors != null)
                     anchors.Add(new BlockAnchor { SourceLine = block.Line, Target = rendered });
+                pageBreakAfter = IsPageBreakBlock(block);
             }
             // 这组被挪到了末尾，行号却还停在定义处，收进 anchors 会把后面的定位带偏，索性不收
             if (deferredFootnotes != null)
                 target.Add(deferredFootnotes);
+        }
+
+        /// <summary>判断一个顶层块是不是 [========] 分页符，渲染路径靠它把换页转给下一块。</summary>
+        internal static bool IsPageBreakBlock(MdBlock block)
+        {
+            var paragraph = block as ParagraphBlock;
+            return paragraph != null && IsPageBreakParagraph(paragraph);
         }
 
         internal static WpfBlock ToBlock(MdBlock block, double fontSize, List<HeadingInfo> outline, int depth = 0)
@@ -414,8 +429,49 @@ namespace MarkdownKit
             }
         }
 
+        /// <summary>
+        /// 单独一段 [========]（至少 8 个 =）是 Editor.md 的分页符。
+        /// 屏幕预览画一条虚线，分页时由渲染路径给下一块置 BreakPageBefore 强制换页。
+        /// </summary>
+        private static bool IsPageBreakParagraph(ParagraphBlock paragraph)
+        {
+            string text = InlineText(paragraph.Inline);
+            if (text.Length < 10 || text[0] != '[' || text[text.Length - 1] != ']')
+                return false;
+            for (int i = 1; i < text.Length - 1; i++)
+            {
+                if (text[i] != '=')
+                    return false;
+            }
+            return true;
+        }
+
+        private static WpfBlock PageBreak(double fontSize)
+        {
+            // Border 不支持虚线边框，用平铺的短线笔刷画一条 5px 实、3px 空的横线
+            var dash = new DrawingBrush
+            {
+                TileMode = TileMode.Tile,
+                Viewport = new Rect(0, 0, 8, 1),
+                ViewportUnits = BrushMappingMode.Absolute,
+                Viewbox = new Rect(0, 0, 8, 1),
+                ViewboxUnits = BrushMappingMode.Absolute,
+                Drawing = new GeometryDrawing(MarkdownTheme.Border, null,
+                    new RectangleGeometry(new Rect(0, 0, 5, 1)))
+            };
+            return new BlockUIContainer(new Border
+            {
+                Height = 1,
+                Background = dash,
+                Margin = new Thickness(0, fontSize * 0.9, 0, fontSize * 0.9)
+            });
+        }
+
         private static WpfBlock Paragraph(ParagraphBlock source, double fontSize)
         {
+            if (IsPageBreakParagraph(source))
+                return PageBreak(fontSize);
+
             // 整段只有一个图片时排成独立一块：既贴合「图片独占一行」的观感，
             // 也让宽度自适应走块级布局（行内的 InlineUIContainer 拿不到栏宽）
             LinkInline image = SoleImage(source.Inline);
@@ -3215,6 +3271,8 @@ namespace MarkdownKit
         private bool _contentDone;
         private bool _completed;
         private bool _contextRestored;
+        // 上一块是分页符：下一块要另起一页（分步渲染时状态得跨 RenderNext 保留）
+        private bool _pageBreakAfter;
 
         private static MarkdownRenderSession _active;
 
@@ -3319,9 +3377,15 @@ namespace MarkdownKit
                     WpfBlock rendered = MarkdownRenderer.ToBlock(block, _fontSize, headings, 0);
                     if (rendered != null)
                     {
+                        if (_pageBreakAfter)
+                        {
+                            rendered.BreakPageBefore = true;
+                            _pageBreakAfter = false;
+                        }
                         _document.Blocks.Add(rendered);
                         _anchors.Add(new BlockAnchor { SourceLine = block.Line, Target = rendered });
                         _lastRenderedLine = block.Line;
+                        _pageBreakAfter = MarkdownRenderer.IsPageBreakBlock(block);
                     }
 
                     for (int i = 0; i < headings.Count; i++)
