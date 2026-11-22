@@ -2340,6 +2340,31 @@ namespace MarkdownKit
             }
         }
 
+        /// <summary>行内代码底色左右的留白宽度。</summary>
+        private const double InlineCodePadding = 10;
+
+        /// <summary>
+        /// 行内代码左侧或右侧的 10px 留白。Inline 没有 Padding，只能垫一块同色的小 Border：
+        /// 高度按代码字体的行距取整、底边贴行盒底（BaselineAlignment.Bottom），
+        /// 才能和 Span 底色的上下沿对齐。垫块用 UIElement 而不是空格，免得挤占字距、行末折行时多出空白；
+        /// 代价是纯文本复制时 WPF 会把对象记成一个空格（选中和代码内容本身不受影响）。
+        /// </summary>
+        private static InlineUIContainer InlineCodePad(double codeSize)
+        {
+            double height = MarkdownTheme.EditorFamily.LineSpacing * codeSize;
+            if (double.IsNaN(height) || double.IsInfinity(height) || height <= 0)
+                height = codeSize * 1.2;
+            var pad = new Border
+            {
+                Width = InlineCodePadding,
+                Height = Math.Ceiling(height),
+                Background = MarkdownTheme.Markdown.InlineCodeBackground,
+                // 垫块只是背景，不该拦截鼠标：否则拖选经过这里会断、行内链接点垫块没反应
+                IsHitTestVisible = false
+            };
+            return new InlineUIContainer(pad) { BaselineAlignment = BaselineAlignment.Bottom };
+        }
+
         private static void AddInline(InlineCollection target, MdInline inline, double fontSize)
         {
             var literal = inline as LiteralInline;
@@ -2355,18 +2380,21 @@ namespace MarkdownKit
                 // 行内代码用 Span 而不是 InlineUIContainer 包一层 Border：后者装的是 UIElement，
                 // 里面的文字不参与 FlowDocument 的选择（选择只覆盖 TextElement），
                 // 行内代码就既选不中也复制不了。代价是 Inline 没有 Padding / CornerRadius，
-                // 底色只能紧贴文字、四个角是直角，拿不到原来那个小圆角块。
+                // 四个角只能是直角，左右留白也只能靠两侧垫同色小 Border 撑出来。
+                double codeSize = fontSize * 0.95;
                 var span = new Span
                 {
                     Background = MarkdownTheme.Markdown.InlineCodeBackground,
                     Foreground = MarkdownTheme.Markdown.InlineCodeText,
                     FontFamily = MarkdownTheme.EditorFamily,
-                    FontSize = fontSize * 0.95
+                    FontSize = codeSize
                 };
                 // 默认重量（Normal/Medium）保持继承（如 **`code`**），只有勾选了粗体才覆盖
                 if (MarkdownTheme.EditorFontWeight == FontWeights.Bold)
                     span.FontWeight = MarkdownTheme.EditorFontWeight;
+                span.Inlines.Add(InlineCodePad(codeSize));
                 span.Inlines.Add(new Run(code.Content));
+                span.Inlines.Add(InlineCodePad(codeSize));
                 target.Add(span);
                 return;
             }
