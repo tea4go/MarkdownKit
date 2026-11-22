@@ -2179,11 +2179,16 @@ namespace MarkdownKit
             if (source == null)
                 return;
 
-            // <sub>/<sup> 要成对处理：中间的内容先攒进一个 Span，遇到闭合标签再整体贴上行内位置。
-            // 其它 HTML 标签照旧忽略（Markdig 给的是 HtmlInline，AddInline 里没有分支就丢掉了）。
+            // <sub>/<sup>、<abbr> 要成对处理：中间的内容先攒进一个 Span，遇到闭合标签再整体贴回父级。
+            // abbr 额外把 title 记成 ToolTip、加下划线；其它 HTML 标签照旧忽略（Markdig 给的是
+            // HtmlInline，AddInline 里没有分支就丢掉了）。
             InlineCollection sink = target;
             Span mark = null;
+            InlineCollection markParent = null;
             BaselineAlignment markAlign = BaselineAlignment.Baseline;
+            Span abbr = null;
+            InlineCollection abbrParent = null;
+            string abbrTip = null;
 
             for (MdInline inline = source.FirstChild; inline != null; inline = inline.NextSibling)
             {
@@ -2191,19 +2196,50 @@ namespace MarkdownKit
                 if (html != null)
                 {
                     string name = HtmlTagName(html.Tag, out bool closing);
+                    if (name == "abbr")
+                    {
+                        if (closing)
+                        {
+                            if (abbr != null)
+                            {
+                                if (abbrTip != null)
+                                    ApplyToolTip(abbr, abbrTip);
+                                abbrParent.Add(abbr);
+                                abbr = null;
+                                abbrParent = null;
+                                abbrTip = null;
+                                sink = target;
+                            }
+                        }
+                        else
+                        {
+                            abbrParent = sink;
+                            abbr = new Span();
+                            string title = HtmlAttribute(html.Tag, "title");
+                            if (!string.IsNullOrEmpty(title))
+                            {
+                                abbr.TextDecorations = TextDecorations.Underline;
+                                abbrTip = WebUtility.HtmlDecode(title);
+                            }
+                            sink = abbr.Inlines;
+                        }
+                        continue;
+                    }
                     if (name == "sub" || name == "sup")
                     {
                         if (mark != null)
                         {
                             ApplyBaseline(mark.Inlines, markAlign);
-                            target.Add(mark);
+                            (markParent ?? target).Add(mark);
+                            sink = markParent ?? target;
                             mark = null;
-                            sink = target;
+                            markParent = null;
                         }
                         if (!closing)
                         {
                             markAlign = name == "sub" ? BaselineAlignment.Subscript : BaselineAlignment.Superscript;
                             mark = new Span { FontSize = fontSize * 0.75 };
+                            markParent = sink;
                             sink = mark.Inlines;
                         }
                         continue;
@@ -2215,7 +2251,13 @@ namespace MarkdownKit
             if (mark != null)
             {
                 ApplyBaseline(mark.Inlines, markAlign);
-                target.Add(mark);
+                (markParent ?? target).Add(mark);
+            }
+            if (abbr != null)
+            {
+                if (abbrTip != null)
+                    ApplyToolTip(abbr, abbrTip);
+                abbrParent.Add(abbr);
             }
         }
 
@@ -2241,6 +2283,43 @@ namespace MarkdownKit
             if (end >= 0)
                 text = text.Substring(0, end);
             return text.ToLowerInvariant();
+        }
+
+        /// <summary>从 HTML 开标签里取某个属性的值（目前只用来读 abbr 的 title）。</summary>
+        private static string HtmlAttribute(string tag, string attribute)
+        {
+            if (string.IsNullOrEmpty(tag))
+                return null;
+
+            Match match = Regex.Match(tag, "(?i)(?<![\\w-])" + Regex.Escape(attribute)
+                + "\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s/>]+))");
+            if (!match.Success)
+                return null;
+            for (int i = 1; i <= 3; i++)
+            {
+                if (match.Groups[i].Success)
+                    return match.Groups[i].Value;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// ToolTip 不是继承属性，得逐层写到 Span 和里面的 Run 上，悬停到任意一段文字都能出提示。
+        /// </summary>
+        private static void ApplyToolTip(Span span, string tip)
+        {
+            span.ToolTip = tip;
+            foreach (System.Windows.Documents.Inline inline in span.Inlines)
+            {
+                var child = inline as Span;
+                if (child != null)
+                {
+                    ApplyToolTip(child, tip);
+                    continue;
+                }
+                if (inline is Run)
+                    inline.ToolTip = tip;
+            }
         }
 
         /// <summary>
