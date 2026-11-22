@@ -2402,7 +2402,7 @@ namespace MarkdownKit
 
         /// <summary>
         /// 链接用主题的链接色，不加下划线：中文的下划线会把笔画切碎，只靠颜色区分就够。
-        /// 绝对地址（http/https 等）交给 WPF 的默认行为；
+        /// 外链走 RequestNavigate 交给主窗口用系统浏览器打开（FlowDocumentScrollViewer 自己不导航）；
         /// 站内目标——相对路径的 md 文档、本文件内的 #锚点——自己接管点击，交给主窗口去解析并打开。
         /// </summary>
         private static Hyperlink MakeHyperlink(string url, ContainerInline children, double fontSize)
@@ -2425,8 +2425,26 @@ namespace MarkdownKit
 
             Uri uri;
             if (Uri.TryCreate(url, UriKind.Absolute, out uri))
+            {
                 hyperlink.NavigateUri = uri;
+                AttachExternalLink(hyperlink, uri);
+            }
             return hyperlink;
+        }
+
+        /// <summary>
+        /// 外链点击：FlowDocumentScrollViewer 只抛 RequestNavigate、没有导航服务，不接住就什么都不会发生。
+        /// opener 要在渲染期就攥住，Render 一结束 _linkOpener 就被清空了。
+        /// </summary>
+        private static void AttachExternalLink(Hyperlink hyperlink, Uri uri)
+        {
+            Action<PreviewLinkTarget> opener = _linkOpener;
+            hyperlink.RequestNavigate += (sender, e) =>
+            {
+                e.Handled = true;
+                if (opener != null)
+                    opener(PreviewLinkTarget.External(uri));
+            };
         }
 
         /// <summary>

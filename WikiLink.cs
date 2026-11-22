@@ -34,6 +34,15 @@ namespace MarkdownKit
         /// </summary>
         public TextElement Target;
 
+        /// <summary>外链（http/https/mailto）的绝对地址；非外链这里是 null。</summary>
+        public Uri Uri;
+
+        /// <summary>外链：交给主窗口用系统默认浏览器打开。</summary>
+        public static PreviewLinkTarget External(Uri uri)
+        {
+            return new PreviewLinkTarget { Uri = uri, Raw = uri.AbsoluteUri };
+        }
+
         /// <summary>[[目标|别名]] 里的目标；Anchor 是 # 后那段。</summary>
         public static PreviewLinkTarget Wiki(string name, string anchor, string raw)
         {
