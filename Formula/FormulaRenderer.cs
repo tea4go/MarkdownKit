@@ -82,6 +82,8 @@ namespace MarkdownKit.Formula
         /// 实测过的都记在注释里，别再猜：
         ///
         /// - \dfrac、\tfrac：amsmath 的两个分数别名，只差字号样式，换成 \frac 由 TexStyle 决定大小
+        /// - \displaystyle：显式要求行间样式。WpfMath 不认这个命令，直接删掉——字号样式由 TexStyle 控制，
+        ///   块级公式本就是 Display，行内公式由 WantsDisplayStyle 提前提成 Display，删掉语义不变
         /// - \ ：LaTeX 的控制空格，等于一个普通空格（约 0.33em）。WpfMath 报 Unknown command，
         ///   换成 \text{ }（一个真实的文本空格，宽度一致）
         /// - \quad（1em）、\qquad（2em）：WpfMath 不认，用三个 / 六个 \text{ } 拼出来
@@ -93,6 +95,7 @@ namespace MarkdownKit.Formula
             if (latex.IndexOf('\\') < 0)
                 return latex;
             return latex
+                .Replace(@"\displaystyle", "")
                 .Replace(@"\dfrac", @"\frac")
                 .Replace(@"\tfrac", @"\frac")
                 .Replace(@"\ ", @"\text{ }")
@@ -100,10 +103,11 @@ namespace MarkdownKit.Formula
                 .Replace(@"\qquad", @"\text{ }\text{ }\text{ }\text{ }\text{ }\text{ }");
         }
 
-        /// <summary>\dfrac 是「行间大小的分数」，出现在行内时要把整条公式提到 Display 样式。</summary>
+        /// <summary>\dfrac 是「行间大小的分数」，\displaystyle 是显式要求行间样式；出现在行内时要把整条公式提到 Display 样式。</summary>
         private static bool WantsDisplayStyle(string latex)
         {
-            return latex.IndexOf(@"\dfrac", StringComparison.Ordinal) >= 0;
+            return latex.IndexOf(@"\dfrac", StringComparison.Ordinal) >= 0
+                || latex.IndexOf(@"\displaystyle", StringComparison.Ordinal) >= 0;
         }
     }
 }
