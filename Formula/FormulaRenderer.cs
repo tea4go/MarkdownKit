@@ -87,8 +87,10 @@ namespace MarkdownKit.Formula
         /// - \ ：LaTeX 的控制空格，等于一个普通空格（约 0.33em）。WpfMath 报 Unknown command，
         ///   换成 \text{ }（一个真实的文本空格，宽度一致）
         /// - \quad（1em）、\qquad（2em）：WpfMath 不认，用三个 / 六个 \text{ } 拼出来
+        /// - \Bigl、\Bigr、\biggl 等 amsmath 定界符尺寸命令：WpfMath 不认，删掉退化成普通大小的括号
         ///
-        /// 注意 \quad 不是 \qquad 的子串（\qquad 是 \q + qquad），替换顺序无所谓。
+        /// 注意 \quad 不是 \qquad 的子串（\qquad 是 \q + qquad），替换顺序无所谓；
+        /// 大小括号要先删带 l / r 的变体再删 \Big / \big，否则 \Biggl 会被 \Big 咬掉一半。
         /// </summary>
         private static string Normalize(string latex)
         {
@@ -100,7 +102,12 @@ namespace MarkdownKit.Formula
                 .Replace(@"\tfrac", @"\frac")
                 .Replace(@"\ ", @"\text{ }")
                 .Replace(@"\quad", @"\text{ }\text{ }\text{ }")
-                .Replace(@"\qquad", @"\text{ }\text{ }\text{ }\text{ }\text{ }\text{ }");
+                .Replace(@"\qquad", @"\text{ }\text{ }\text{ }\text{ }\text{ }\text{ }")
+                .Replace(@"\Biggl", "").Replace(@"\biggl", "")
+                .Replace(@"\Biggr", "").Replace(@"\biggr", "")
+                .Replace(@"\Bigl", "").Replace(@"\bigl", "")
+                .Replace(@"\Bigr", "").Replace(@"\bigr", "")
+                .Replace(@"\Big", "").Replace(@"\big", "");
         }
 
         /// <summary>\dfrac 是「行间大小的分数」，\displaystyle 是显式要求行间样式；出现在行内时要把整条公式提到 Display 样式。</summary>

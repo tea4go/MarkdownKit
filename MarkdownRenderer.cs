@@ -318,6 +318,9 @@ namespace MarkdownKit
                 if (chart != null)
                     return chart;
 
+                if (IsFormulaLanguage(FenceLanguage(code)))
+                    return FormulaBlock(code, fontSize);
+
                 WpfBlock diagram = PlantUmlBlock(code, fontSize);
                 return diagram ?? Code(code, fontSize);
             }
@@ -1124,6 +1127,18 @@ namespace MarkdownKit
             {
                 Margin = new Thickness(0, fontSize * 0.3, 0, fontSize * 0.5)
             };
+        }
+
+        /// <summary>
+        /// 围栏标了 math / katex / latex，就把围栏内容当 LaTeX 公式排。语言标记后面带了参数时只取第一个词。
+        /// </summary>
+        private static bool IsFormulaLanguage(string language)
+        {
+            string lang = language == null ? "" : language.Trim().ToLowerInvariant();
+            int space = lang.IndexOf(' ');
+            if (space > 0)
+                lang = lang.Substring(0, space);
+            return lang == "math" || lang == "katex" || lang == "latex";
         }
 
         /// <summary>
