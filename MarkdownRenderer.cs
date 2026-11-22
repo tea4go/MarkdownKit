@@ -2346,24 +2346,32 @@ namespace MarkdownKit
         /// <summary>
         /// 行内代码：整块配色底由一个 Border 包住文字，底色和文字同一次绘制，
         /// 上下沿天然齐平，不会像两侧垫块那样出现亚像素错位。
-        /// 左右留白就是 Border 的 Padding。
-        /// 代价：文字装在 UIElement 里，不参与 FlowDocument 选择，纯文本复制时会记成一个空格。
+        /// 文字用只读 TextBox 而不是 TextBlock：后者选不中，前者能拖选、双击选词、右键复制。
+        /// 外观按纯文本调：去边框、透明底、零内边距，左右留白交给 Border.Padding 各 10px。
         /// </summary>
         private static InlineUIContainer InlineCodeBox(string content, double codeSize, FontWeight? inheritedWeight)
         {
-            double height = MarkdownTheme.EditorFamily.LineSpacing * codeSize;
-            if (double.IsNaN(height) || double.IsInfinity(height) || height <= 0)
-                height = codeSize * 1.2;
-            var text = new TextBlock
+            var text = new TextBox
             {
                 Text = content,
+                IsReadOnly = true,
+                IsReadOnlyCaretVisible = false,
+                IsTabStop = false,
+                BorderThickness = new Thickness(0),
+                Background = Brushes.Transparent,
+                Padding = new Thickness(0),
+                // TextBox 自带的文字容器左右各缩进 2px（即使 Padding / Border 都为 0），
+                // 用负边距抵消，Border.Padding 的 10px 才是肉眼看到的留白
+                Margin = new Thickness(-2, 0, -2, 0),
+                MinWidth = 0,
+                MinHeight = 0,
                 FontFamily = MarkdownTheme.EditorFamily,
                 FontSize = codeSize,
                 Foreground = MarkdownTheme.Markdown.InlineCodeText,
-                // 行高锁定为代码字体的行距：Border 高度与原先的文字底色一致，块内也不会多出上下空白
-                LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
-                LineHeight = height,
-                TextWrapping = TextWrapping.NoWrap
+                TextWrapping = TextWrapping.NoWrap,
+                AcceptsReturn = false,
+                VerticalContentAlignment = VerticalAlignment.Center,
+                HorizontalContentAlignment = HorizontalAlignment.Left
             };
             if (MarkdownTheme.EditorFontWeight == FontWeights.Bold)
                 text.FontWeight = MarkdownTheme.EditorFontWeight;
@@ -2373,9 +2381,7 @@ namespace MarkdownKit
             {
                 Background = MarkdownTheme.Markdown.InlineCodeBackground,
                 Padding = new Thickness(InlineCodePadding, 0, InlineCodePadding, 0),
-                Child = text,
-                // 代码内容不再可选，但也不该拦截鼠标：拖选经过这里不应中断
-                IsHitTestVisible = false
+                Child = text
             };
             return new InlineUIContainer(box) { BaselineAlignment = BaselineAlignment.Bottom };
         }
