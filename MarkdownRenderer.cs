@@ -2349,15 +2349,20 @@ namespace MarkdownKit
         /// 才能和 Span 底色的上下沿对齐。垫块用 UIElement 而不是空格，免得挤占字距、行末折行时多出空白；
         /// 代价是纯文本复制时 WPF 会把对象记成一个空格（选中和代码内容本身不受影响）。
         /// </summary>
-        private static InlineUIContainer InlineCodePad(double codeSize)
+        private static InlineUIContainer InlineCodePad(double codeSize, bool left)
         {
             double height = MarkdownTheme.EditorFamily.LineSpacing * codeSize;
             if (double.IsNaN(height) || double.IsInfinity(height) || height <= 0)
                 height = codeSize * 1.2;
             var pad = new Border
             {
-                Width = InlineCodePadding,
+                // 多画 1px、再用负边距朝文字那侧压 1px：布局仍占 10px，绘制却叠进 Span 底色里，
+                // 不然两层的亚像素边缘之间会漏出一条亮缝，放大后像一条竖线。
+                Width = InlineCodePadding + 1,
                 Height = Math.Ceiling(height),
+                Margin = left
+                    ? new Thickness(0, 0, -1, 0)
+                    : new Thickness(-1, 0, 0, 0),
                 Background = MarkdownTheme.Markdown.InlineCodeBackground,
                 // 垫块只是背景，不该拦截鼠标：否则拖选经过这里会断、行内链接点垫块没反应
                 IsHitTestVisible = false
@@ -2392,9 +2397,9 @@ namespace MarkdownKit
                 // 默认重量（Normal/Medium）保持继承（如 **`code`**），只有勾选了粗体才覆盖
                 if (MarkdownTheme.EditorFontWeight == FontWeights.Bold)
                     span.FontWeight = MarkdownTheme.EditorFontWeight;
-                span.Inlines.Add(InlineCodePad(codeSize));
+                span.Inlines.Add(InlineCodePad(codeSize, true));
                 span.Inlines.Add(new Run(code.Content));
-                span.Inlines.Add(InlineCodePad(codeSize));
+                span.Inlines.Add(InlineCodePad(codeSize, false));
                 target.Add(span);
                 return;
             }
