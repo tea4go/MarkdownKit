@@ -2344,10 +2344,10 @@ namespace MarkdownKit
         private const double InlineCodePadding = 10;
 
         /// <summary>
-        /// 行内代码：整块配色底由一个 Border 包住文字，底色和文字同一次绘制，
+        /// 行内代码：整块底色 + 边框由一个 Border 包住文字，一次绘制，
         /// 上下沿天然齐平，不会像两侧垫块那样出现亚像素错位。
         /// 文字用只读 TextBox 而不是 TextBlock：后者选不中，前者能拖选、双击选词、右键复制。
-        /// 外观按纯文本调：去边框、透明底、零内边距，左右留白交给 Border.Padding 各 10px。
+        /// 外观按纯文本调：透明底、零内边距，留白交给 Border.Padding。
         /// </summary>
         private static InlineUIContainer InlineCodeBox(string content, double codeSize, FontWeight? inheritedWeight)
         {
@@ -2361,7 +2361,7 @@ namespace MarkdownKit
                 Background = Brushes.Transparent,
                 Padding = new Thickness(0),
                 // TextBox 自带的文字容器左右各缩进 2px（即使 Padding / Border 都为 0），
-                // 用负边距抵消，Border.Padding 的 10px 才是肉眼看到的留白
+                // 用负边距抵消，Border.Padding 的留白才是肉眼看到的宽度
                 Margin = new Thickness(-2, 0, -2, 0),
                 MinWidth = 0,
                 MinHeight = 0,
@@ -2377,11 +2377,17 @@ namespace MarkdownKit
                 text.FontWeight = MarkdownTheme.EditorFontWeight;
             else if (inheritedWeight.HasValue)
                 text.FontWeight = inheritedWeight.Value;
+            double border = 1;
             var box = new Border
             {
                 Background = MarkdownTheme.Markdown.InlineCodeBackground,
-                Padding = new Thickness(InlineCodePadding, 0, InlineCodePadding, 0),
-                Child = text
+                BorderBrush = MarkdownTheme.Markdown.InlineCodeBorder,
+                BorderThickness = new Thickness(border),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(InlineCodePadding - border, 0, InlineCodePadding - border, 0),
+                Child = text,
+                // 边框占布局、上下各 1px：用负边距补回，块仍只占一个行高，不撑大行距
+                Margin = new Thickness(0, -border, 0, -border)
             };
             return new InlineUIContainer(box) { BaselineAlignment = BaselineAlignment.Bottom };
         }

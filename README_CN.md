@@ -285,7 +285,7 @@ ISelectableTextView selectable = zoom as ISelectableTextView;
 - 正文与标题：`Text`、`Heading`、`HeadingRule1`、`HeadingRule2`、`Link`、`MarkBackground`。
 - 引用：`QuoteText`、`QuoteBorder`、`QuoteBackground`。
 - 代码：`CodeBackground`、`CodeBorder` 及各类 token 颜色（关键字、字符串、注释、数字、函数、类型、标签、属性、键名、段落名、变量）。
-- 行内代码：`InlineCodeBackground`、`InlineCodeText`。
+- 行内代码：`InlineCodeBackground`、`InlineCodeText`、`InlineCodeBorder`。
 - 表格：`TableBackground`、`TableBorder`、`TableHeaderBackground`、`TableEvenRowBackground`。
 - 其他：`SegmentFill`。
 
