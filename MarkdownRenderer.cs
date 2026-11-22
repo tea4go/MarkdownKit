@@ -1054,14 +1054,19 @@ namespace MarkdownKit
 
         /// <summary>
         /// 代码块标了 mermaid，就用原生渲染器画出来（时序图 / 流程图）；画不出来返回 null，退回普通代码块。
+        /// 没标语言的裸代码块只按序列图判据识别，兼容省略 ```mermaid 和 sequenceDiagram 头的写法。
         /// </summary>
         private static WpfBlock MermaidBlock(CodeBlock source, double fontSize)
         {
-            string language = FenceLanguage(source) ?? string.Empty;
-            if (!language.Trim().Equals("mermaid", StringComparison.OrdinalIgnoreCase))
+            string language = (FenceLanguage(source) ?? string.Empty).Trim();
+            FrameworkElement view;
+            if (language.Length == 0)
+                view = MermaidRenderer.TryCreateSequenceOnly(CodeText(source), fontSize, _imageHost);
+            else if (language.Equals("mermaid", StringComparison.OrdinalIgnoreCase))
+                view = MermaidRenderer.TryCreate(CodeText(source), fontSize, _imageHost);
+            else
                 return null;
 
-            FrameworkElement view = MermaidRenderer.TryCreate(CodeText(source), fontSize, _imageHost);
             if (view == null)
                 return null;
 
