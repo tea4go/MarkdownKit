@@ -1516,8 +1516,11 @@ namespace MarkdownKit
         /// BlockUIContainer 包 Border；但 Border 里装的是 UIElement，表格文字会退出
         /// FlowDocument 的选择，所以和代码块一样嵌一个只读 RichTextBox 负责选中复制。
         /// 格子底色在四角会被画成直角，用圆角 Clip 裁一下，卡片外框才干净。
+        /// 卡片自身铺一层表格底色：外框与格子之间即使差一两像素也不露页面白。
         /// </summary>
-        private static WpfBlock TableCard(Table table, double fontSize)
+        private static WpfBlock TableCard(Table table, double fontSize,
+            double[] natural = null, double[] floor = null,
+            double totalNatural = 0, double totalFloor = 0)
         {
             var document = new FlowDocument(table)
             {
@@ -1541,8 +1544,8 @@ namespace MarkdownKit
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
                 Document = document
             };
-            // 页宽跟随可视宽度：星号列（HTML 表格）才能按面板宽度收放；
-            // 圆角 Clip 把格子底色在四角裁掉，圆角外框才不会被直角底色顶破
+            // 页宽和管道表格的列宽都按卡片内实际宽度重排：宿主宽度含滚动条、
+            // 宽页模式下页宽又可能大于宿主，绑宿主会让表格与卡片内宽对不齐、边上露白。
             double lastWidth = -1;
             text.SizeChanged += (sender, e) =>
             {
@@ -1552,6 +1555,14 @@ namespace MarkdownKit
                 {
                     lastWidth = e.NewSize.Width;
                     document.PageWidth = e.NewSize.Width;
+                    if (natural != null)
+                    {
+                        for (int i = 0; i < table.Columns.Count && i < natural.Length; i++)
+                        {
+                            table.Columns[i].Width = new GridLength(
+                                ColumnWidth(e.NewSize.Width, natural[i], floor[i], totalNatural, totalFloor));
+                        }
+                    }
                 }
                 text.Clip = new RectangleGeometry(
                     new Rect(0, 0, e.NewSize.Width, e.NewSize.Height),
@@ -1559,6 +1570,7 @@ namespace MarkdownKit
             };
             return new BlockUIContainer(new Border
             {
+                Background = MarkdownTheme.Markdown.TableBackground,
                 BorderBrush = MarkdownTheme.Markdown.TableBorder,
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(TableCornerRadius),
@@ -1637,31 +1649,8 @@ namespace MarkdownKit
 
             for (int i = 0; i < columnCount; i++)
             {
-                var column = new TableColumn();
-                if (_imageHost != null)
-                {
-                    // 跟随宿主宽度，面板拖动分栏时列宽也能跟着重新分配。
-                    var layout = new TableColumnWidthLayout
-                    {
-                        Natural = natural[i],
-                        Floor = floor[i],
-                        TotalNatural = totalNatural,
-                        TotalFloor = totalFloor,
-                    };
-                    BindingOperations.SetBinding(column, TableColumn.WidthProperty,
-                        new Binding(nameof(FrameworkElement.ActualWidth))
-                        {
-                            Source = _imageHost,
-                            Converter = layout,
-                        });
-                }
-                else
-                {
-                    // 没有宿主就按估算宽度排，至少不会把列压成 0 宽。
-                    column.Width = new GridLength(natural[i]);
-                }
-
-                table.Columns.Add(column);
+                // 先按地板宽度排，卡片布局出实际宽度后由 TableCard 重新分配
+                table.Columns.Add(new TableColumn { Width = new GridLength(floor[i]) });
             }
 
             var group = new TableRowGroup();
@@ -1702,51 +1691,26 @@ namespace MarkdownKit
                 group.Rows.Add(row);
             }
 
-            return TableCard(table, fontSize);
+            return TableCard(table, fontSize, natural, floor, totalNatural, totalFloor);
         }
 
         /// <summary>
-        /// 把宿主实际宽度分给各列：够宽就按内容自然宽度，不够就在「最小宽度」之上按内容比例压缩。
-        /// 绑到宿主 ActualWidth 上，面板拖宽拖窄时列宽跟着重排。
+        /// 把可用宽度分给一列：够宽就按内容自然宽度并按比例铺满，不够就在地板宽度之上压缩。
+        /// 管道表格由 <see cref="TableCard"/> 在卡片宽度变化时调用。
         /// </summary>
-        private sealed class TableColumnWidthLayout : IValueConverter
+        private static double ColumnWidth(double available, double natural, double floor,
+            double totalNatural, double totalFloor)
         {
-            public double Natural { get; set; }
+            if (available <= 0 || totalNatural <= 0)
+                return Math.Max(1, floor);
 
-            public double Floor { get; set; }
+            if (available >= totalNatural)
+                return natural + (available - totalNatural) * natural / totalNatural;
 
-            public double TotalNatural { get; set; }
+            if (available <= totalFloor)
+                return Math.Max(1, floor * available / totalFloor);
 
-            public double TotalFloor { get; set; }
-
-            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
-            {
-                // 减掉表格左右外框，避免列宽总和比可用宽度多出 2px 又触发裁切
-                double available = value is double width && width > 0 ? width - 2 : 0;
-                if (available <= 0)
-                {
-                    // 宿主还没布局出宽度：先按最小宽度排，等 ActualWidth 绑定回填后再重排。
-                    // 返回自然宽度会撑出页面，排在后面的列被压成 0 宽，反而把行高撑大。
-                    return new GridLength(Floor);
-                }
-
-                if (available >= TotalNatural)
-                {
-                    // 够宽就按自然宽度铺满可用宽度，保持宽预览里表格占满整行的原有观感
-                    return new GridLength(Natural + (available - TotalNatural) * Natural / TotalNatural);
-                }
-
-                double result;
-                if (available <= TotalFloor)
-                    result = Floor * available / TotalFloor;
-                else
-                    result = Floor + (Natural - Floor) * (available - TotalFloor) / (TotalNatural - TotalFloor);
-
-                return new GridLength(Math.Max(1, result));
-            }
-
-            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
-                throw new NotSupportedException();
+            return Math.Max(1, floor + (natural - floor) * (available - totalFloor) / (totalNatural - totalFloor));
         }
 
         /// <summary>
