@@ -88,6 +88,8 @@ namespace MarkdownKit.Formula
         ///   换成 \text{ }（一个真实的文本空格，宽度一致）
         /// - \quad（1em）、\qquad（2em）：WpfMath 不认，用三个 / 六个 \text{ } 拼出来
         /// - \Bigl、\Bigr、\biggl 等 amsmath 定界符尺寸命令：WpfMath 不认，删掉退化成普通大小的括号
+        /// - \_：从网页、聊天里复制公式时下划线常被转义成 \_，但数学模式下它本意就是下标的 _，
+        ///   WpfMath 报 Unknown command，换回 _
         ///
         /// 注意 \quad 不是 \qquad 的子串（\qquad 是 \q + qquad），替换顺序无所谓；
         /// 大小括号要先删带 l / r 的变体再删 \Big / \big，否则 \Biggl 会被 \Big 咬掉一半。
@@ -98,6 +100,7 @@ namespace MarkdownKit.Formula
                 return latex;
             return latex
                 .Replace(@"\displaystyle", "")
+                .Replace(@"\_", "_")
                 .Replace(@"\dfrac", @"\frac")
                 .Replace(@"\tfrac", @"\frac")
                 .Replace(@"\ ", @"\text{ }")
