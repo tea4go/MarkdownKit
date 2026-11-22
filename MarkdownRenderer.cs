@@ -1551,16 +1551,23 @@ namespace MarkdownKit
             {
                 if (e.NewSize.Width <= 0 || e.NewSize.Height <= 0)
                     return;
+                // RichTextBox 应用主题样式时会把文档 PagePadding 从 0 改回 5,0,5,0，
+                // 表格因此左右各内缩 5px；每次布局后压回 0，表格才能真正贴到卡片边框上。
+                if (document.PagePadding != new Thickness(0))
+                    document.PagePadding = new Thickness(0);
                 if (Math.Abs(e.NewSize.Width - lastWidth) >= 0.5)
                 {
                     lastWidth = e.NewSize.Width;
                     document.PageWidth = e.NewSize.Width;
+                    // 万一 PagePadding 又被样式改回去，列宽也只占文档真正可用的宽度，
+                    // 宁可叠在边框上也不能在边上留白。
+                    double available = e.NewSize.Width - document.PagePadding.Left - document.PagePadding.Right;
                     if (natural != null)
                     {
                         for (int i = 0; i < table.Columns.Count && i < natural.Length; i++)
                         {
                             table.Columns[i].Width = new GridLength(
-                                ColumnWidth(e.NewSize.Width, natural[i], floor[i], totalNatural, totalFloor));
+                                ColumnWidth(available, natural[i], floor[i], totalNatural, totalFloor));
                         }
                     }
                 }
