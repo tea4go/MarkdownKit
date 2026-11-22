@@ -58,11 +58,29 @@ namespace MarkdownKit
         /// 都不开——单字符的 ~ 和 ^ 在正文里太常见（波浪线、LaTeX 片段），开了反而误伤。
         /// wiki 链接是自己写的扩展（Markdig 没带），同样只插一个认 [ 的行内解析器。
         /// </summary>
-        internal static readonly MarkdownPipeline Pipeline =
-            new MarkdownPipelineBuilder().UsePipeTables().UseYamlFrontMatter().UseMathematics()
+        /// <summary>
+        /// UseMathematics 自带的 MathInlineParser 要求 $ 两侧是空白，「公式$$E=mc^2$$公式」这种
+        /// 紧贴中文的写法会被当成普通文本；换成放宽边界的 RelaxedMathInlineParser。
+        /// 块级 $$...$$ 仍由 MathBlockParser 处理，不受影响。
+        /// </summary>
+        internal static readonly MarkdownPipeline Pipeline = BuildPipeline();
+
+        private static MarkdownPipeline BuildPipeline()
+        {
+            var builder = new MarkdownPipelineBuilder().UsePipeTables().UseYamlFrontMatter().UseMathematics()
                 .UseFootnotes().UseTaskLists()
                 .UseEmphasisExtras(EmphasisExtraOptions.Strikethrough | EmphasisExtraOptions.Marked)
-                .Use<WikiLinkExtension>().Build();
+                .Use<WikiLinkExtension>();
+
+            for (int i = builder.InlineParsers.Count - 1; i >= 0; i--)
+            {
+                if (builder.InlineParsers[i] is Markdig.Extensions.Mathematics.MathInlineParser)
+                    builder.InlineParsers.RemoveAt(i);
+            }
+            builder.InlineParsers.Insert(0, new RelaxedMathInlineParser());
+
+            return builder.Build();
+        }
 
         /// <summary>图片相对路径的基准目录（当前文档所在目录），只在一次 Render 期间有效。</summary>
         internal static string _imageBaseDir;

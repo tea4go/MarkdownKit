@@ -52,6 +52,7 @@
     <Compile Include="BrokenImageIcon.cs" />
     <Compile Include="Formula/FormulaElement.cs" />
     <Compile Include="Formula/FormulaRenderer.cs" />
+    <Compile Include="Formula/RelaxedMathInlineParser.cs" />
     <Compile Include="ImageWidthAttribute.cs" />
     <Compile Include="MarkdownAssets.cs" />
     <Compile Include="MarkdownImage.cs" />
