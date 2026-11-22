@@ -2383,12 +2383,14 @@ namespace MarkdownKit
                 Background = MarkdownTheme.Markdown.InlineCodeBackground,
                 BorderBrush = MarkdownTheme.Markdown.InlineCodeBorder,
                 BorderThickness = new Thickness(border),
-                CornerRadius = new CornerRadius(6),
                 Padding = new Thickness(InlineCodePadding - border, 0, InlineCodePadding - border, 0),
                 Child = text,
                 // 边框占布局、上下各 1px：用负边距补回，块仍只占一个行高，不撑大行距
                 Margin = new Thickness(0, -border, 0, -border)
             };
+            // 圆角取块高的 25%，字号或行高变化时跟着重算
+            box.SizeChanged += (sender, e) =>
+                ((Border)sender).CornerRadius = new CornerRadius(e.NewSize.Height * 0.25);
             return new InlineUIContainer(box) { BaselineAlignment = BaselineAlignment.Bottom };
         }
 
