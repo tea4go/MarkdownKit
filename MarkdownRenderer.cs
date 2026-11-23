@@ -2169,6 +2169,7 @@ namespace MarkdownKit
             return new TableCell
             {
                 Background = background,
+                Foreground = MarkdownTheme.Markdown.TableText ?? MarkdownTheme.Markdown.Text,
                 BorderBrush = MarkdownTheme.Markdown.TableBorder,
                 BorderThickness = new Thickness(
                     0, 0, cellIndex < columnCount - 1 ? 1 : 0, lastRow ? 0 : 1),

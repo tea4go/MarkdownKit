@@ -31,6 +31,8 @@ namespace MarkdownKit
         public Brush InlineCodeText { get; set; }
         public Brush InlineCodeBorder { get; set; }
         public Brush SegmentFill { get; set; }
+        /// <summary>表格单元格文字。未设置时渲染器回退到 <see cref="Text"/>。</summary>
+        public Brush TableText { get; set; }
         public Brush TableBackground { get; set; }
         public Brush TableBorder { get; set; }
         public Brush TableHeaderBackground { get; set; }
@@ -67,6 +69,7 @@ namespace MarkdownKit
                 InlineCodeText = Brush("#263238"),
                 InlineCodeBorder = Brush("#7EA9C9"),
                 SegmentFill = Brush("#F1F8FF"),
+                TableText = Brush("#2C3E50"),
                 TableBackground = Brush("#FFFFFF"),
                 TableBorder = Brush("#C8E1FF"),
                 TableHeaderBackground = Brush("#F1F8FF"),
@@ -105,6 +108,7 @@ namespace MarkdownKit
                 InlineCodeText = Brush("#839496"),
                 InlineCodeBorder = Brush("#1A7778"),
                 SegmentFill = Brush("#33383F"),
+                TableText = Brush("#D6DEE8"),
                 TableBackground = Brush("#002C37"),
                 TableBorder = Brush("#1A7778"),
                 TableHeaderBackground = Brush("#004F5E"),
