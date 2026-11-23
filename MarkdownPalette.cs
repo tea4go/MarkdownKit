@@ -14,6 +14,8 @@ namespace MarkdownKit
         public Brush QuoteText { get; set; }
         public Brush QuoteBorder { get; set; }
         public Brush QuoteBackground { get; set; }
+        /// <summary>代码块普通文字。未设置时渲染器回退到 <see cref="Text"/>。</summary>
+        public Brush CodeText { get; set; }
         public Brush CodeBackground { get; set; }
         public Brush CodeBorder { get; set; }
         public Brush CodeKeyword { get; set; }
@@ -52,6 +54,7 @@ namespace MarkdownKit
                 QuoteText = Brush("#777777"),
                 QuoteBorder = Brush("#D6DBDF"),
                 QuoteBackground = Brush("#14668099"),
+                CodeText = Brush("#393939"),
                 CodeBackground = Brush("#EEEEEE"),
                 CodeBorder = Brush("#7EA9C9"),
                 CodeKeyword = Brush("#D73A49"),
@@ -91,6 +94,7 @@ namespace MarkdownKit
                 QuoteText = Brush("#999999"),
                 QuoteBorder = Brush("#4A5058"),
                 QuoteBackground = Brush("#14FFFFFF"),
+                CodeText = Brush("#CCCCCC"),
                 CodeBackground = Brush("#00202B"),
                 CodeBorder = Brush("#1A7778"),
                 CodeKeyword = Brush("#FF7B72"),
