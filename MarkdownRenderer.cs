@@ -980,7 +980,7 @@ namespace MarkdownKit
                 FontFamily = MarkdownTheme.EditorFamily,
                 FontSize = codeSize,
                 FontWeight = MarkdownTheme.EditorFontWeight,
-                Foreground = MarkdownTheme.Markdown.Text,
+                Foreground = MarkdownTheme.Markdown.CodeText ?? MarkdownTheme.Markdown.Text,
                 // 不设的话 FlowDocument 默认 400 宽，会把代码排成好几栏
                 ColumnWidth = double.PositiveInfinity,
                 PagePadding = new Thickness(0)
