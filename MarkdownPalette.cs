@@ -89,7 +89,7 @@ namespace MarkdownKit
                 Heading = Brush("#EEEEEE"),
                 HeadingRule1 = Brush("#1A7778"),
                 HeadingRule2 = Brush("#2E4B4B"),
-                Link = Brush("#2EA0FF"),
+                Link = Brush("#6CB6FF"),
                 MarkBackground = Brush("#5C4B00"),
                 QuoteText = Brush("#999999"),
                 QuoteBorder = Brush("#4A5058"),
