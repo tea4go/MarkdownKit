@@ -25,6 +25,7 @@ namespace MarkdownKit
         {
             { "copyCode", "复制代码" },
             { "codeLineNumbers", "显示行号" },
+            { "codeWrap", "自动折行" },
             { "footnoteJump", "跳到脚注 {0}" },
             { "footnoteBack", "回到正文引用处" }
         };

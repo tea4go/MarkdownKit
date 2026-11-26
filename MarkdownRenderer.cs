@@ -987,7 +987,8 @@ namespace MarkdownKit
             };
             // FlowDocument 没有“不折行”开关：页宽给多少就在哪儿断行。这里按最长一行量出页宽钉死，
             // 超出可视宽度的部分交给横向滚动条。
-            document.PageWidth = CodePageWidth(code, document.FontSize);
+            double noWrapWidth = CodePageWidth(code, document.FontSize);
+            document.PageWidth = noWrapWidth;
 
             var text = new RichTextBox
             {
@@ -1005,25 +1006,12 @@ namespace MarkdownKit
                 Document = document
             };
 
-            // 滚动条平时隐形，鼠标进到这个代码块上才浮现；挂个只作用于自家滚动条的隐式样式，
-            // 用透明度而不是 Visibility，免得显隐时把内容宽度挤一下。
-            // 必须 BasedOn 宿主应用级的 ScrollBar 样式：RichTextBox.Resources 里的隐式样式会
-            // 完全遮住上层样式，不继承就退回系统默认的粗滚动条，跟别处对不上。
-            var scrollBarStyle = new Style(typeof(ScrollBar))
-            {
-                BasedOn = Application.Current?.TryFindResource(typeof(ScrollBar)) as Style
-            };
-            var scrollBarIdle = new DataTrigger
-            {
-                Binding = new Binding("IsMouseOver")
-                {
-                    RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(RichTextBox), 1)
-                },
-                Value = false
-            };
-            scrollBarIdle.Setters.Add(new Setter(UIElement.OpacityProperty, 0.0));
-            scrollBarStyle.Triggers.Add(scrollBarIdle);
-            text.Resources.Add(typeof(ScrollBar), scrollBarStyle);
+            // 横向滚动条要一直看得见：长行超出的部分全靠它提示「右边还有内容」，
+            // 平时透明、悬停才淡入等于没有（只能拿键盘一下下往右挪）。
+            // 外观仍取宿主那条细滚动条，见 CodeScrollBarStyle。
+            Style codeScrollBar = CodeScrollBarStyle();
+            if (codeScrollBar != null)
+                text.Resources.Add(typeof(ScrollBar), codeScrollBar);
 
             // 行号列：默认收起，点右上角那个「行号」按钮才显示。单独占一列而不是塞进代码里，
             // 这样在预览里手动选中复制拿到的仍然只有代码。
@@ -1060,6 +1048,7 @@ namespace MarkdownKit
                 HorizontalAlignment = HorizontalAlignment.Right,
                 VerticalAlignment = VerticalAlignment.Top
             };
+            buttons.Children.Add(WrapButton(document, text, noWrapWidth, codeSize));
             buttons.Children.Add(LineNumberButton(numbers, paragraph, text, codeSize));
             buttons.Children.Add(CopyButton(code, codeSize));
 
@@ -1106,6 +1095,116 @@ namespace MarkdownKit
             }
             return Math.Ceiling(widest + fontSize);
         }
+
+        /// <summary>
+        /// 代码块用的滚动条样式：外观沿用宿主应用级的细滚动条，但去掉「平时透明、悬停才淡入」那层触发器，
+        /// 内容超出宽度时一直显出来。
+        /// 宿主那条隐式样式自己 BasedOn 一份带模板的基样式，淡入触发器挂在派生那条上；
+        /// 这里以基样式为底，再加一条不透明度恒为 1，模板里的 DynamicResource 仍然跟着主题走。
+        /// </summary>
+        private static Style _codeScrollBarStyle;
+
+        private static Style CodeScrollBarStyle()
+        {
+            // 宿主那条样式是同一个实例，模板里用的是 DynamicResource，换主题时颜色自己会跟着变，缓存一份就够
+            if (_codeScrollBarStyle != null)
+                return _codeScrollBarStyle;
+            var host = Application.Current?.TryFindResource(typeof(ScrollBar)) as Style;
+            if (host == null)
+                return null;
+            var style = new Style(typeof(ScrollBar)) { BasedOn = host.BasedOn ?? host };
+            style.Setters.Add(new Setter(UIElement.OpacityProperty, 1.0));
+            _codeScrollBarStyle = style;
+            return style;
+        }
+
+        /// <summary>
+        /// 代码块右上角的「自动折行」开关，排在三个按钮的最前面。
+        /// 关着（默认）：文档页宽按最长一行钉死，超出的部分走横向滚动条；
+        /// 打开：页宽交还给 RichTextBox（NaN），文字按可视宽度折行，横向滚动条一并收起。
+        /// </summary>
+        private static Border WrapButton(FlowDocument document, RichTextBox text, double noWrapWidth,
+            double fontSize)
+        {
+            var glyph = new Path
+            {
+                // 上面一整行，中间那行先往右再折回来，箭头指回左边：跟行号那个图标区分开
+                Data = Geometry.Parse(
+                    "M 0.8,3 H 11.2 M 0.8,6.6 H 8.2 A 1.7,1.7 0 0 1 6.5,8.3 H 3.4 M 5.2,6.5 L 3.4,8.3 L 5.2,10.1"),
+                Stroke = MarkdownTheme.Muted,
+                StrokeThickness = 1.2,
+                StrokeLineJoin = PenLineJoin.Round,
+                StrokeStartLineCap = PenLineCap.Round,
+                StrokeEndLineCap = PenLineCap.Round,
+                Width = fontSize * 0.62,
+                Height = fontSize * 0.62,
+                Stretch = Stretch.Uniform
+            };
+            var button = new Border
+            {
+                Padding = new Thickness(fontSize * 0.2),
+                Margin = new Thickness(0, 0, fontSize * 0.2, 0),
+                Background = Brushes.Transparent,
+                Cursor = Cursors.Hand,
+                ToolTip = MarkdownResources.T("codeWrap"),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Top,
+                Child = glyph
+            };
+
+            // 开着的时候图标常亮，悬停时也亮，其余时候是弱化色
+            bool on = false;
+            // 折行时页宽得给成实际可视宽度：ColumnWidth 是 Infinity，
+            // 页宽留 NaN 等于不给上限，长行既不折、还会被悄悄裁掉。
+            double wrapWidth = -1;
+
+            Action refresh = () =>
+            {
+                glyph.Stroke = on || button.IsMouseOver ? MarkdownTheme.Foreground : MarkdownTheme.Muted;
+            };
+            button.MouseEnter += (s, e) => refresh();
+            button.MouseLeave += (s, e) => refresh();
+
+            // 折行状态下宽度变了（窗口缩放、页宽变化）就跟着重排
+            text.SizeChanged += (s, e) =>
+            {
+                if (!on || e.NewSize.Width <= 0)
+                    return;
+                double available = e.NewSize.Width - document.PagePadding.Left - document.PagePadding.Right;
+                if (available <= 0 || Math.Abs(available - wrapWidth) < 0.5)
+                    return;
+                wrapWidth = available;
+                document.PageWidth = available;
+            };
+
+            // 跟复制、行号按钮一样：先把按下标成已处理，免得预览的选择逻辑把抬起事件吃掉
+            button.MouseLeftButtonDown += (s, e) => e.Handled = true;
+            button.MouseLeftButtonUp += (s, e) =>
+            {
+                on = !on;
+                if (on)
+                {
+                    double available = text.ActualWidth - document.PagePadding.Left - document.PagePadding.Right;
+                    if (available > 0)
+                    {
+                        wrapWidth = available;
+                        document.PageWidth = available;
+                    }
+                }
+                else
+                {
+                    wrapWidth = -1;
+                    document.PageWidth = noWrapWidth;
+                }
+                text.HorizontalScrollBarVisibility = on
+                    ? ScrollBarVisibility.Disabled
+                    : ScrollBarVisibility.Auto;
+                refresh();
+            };
+
+            return button;
+        }
+
 
         /// <summary>围栏上的语言标识（```python 里的 python）。缩进式代码块没有，返回 null。</summary>
         private static string FenceLanguage(CodeBlock source)
