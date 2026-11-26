@@ -1008,22 +1008,25 @@ namespace MarkdownKit
 
             // 滚动条平时隐形，鼠标进到这个代码块上才浮现；挂个只作用于自家滚动条的隐式样式，
             // 用透明度而不是 Visibility，免得显隐时把内容宽度挤一下。
-            // 必须 BasedOn 宿主应用级的 ScrollBar 样式：RichTextBox.Resources 里的隐式样式会
-            // 完全遮住上层样式，不继承就退回系统默认的粗滚动条，跟别处对不上。
+            // 不能直接 BasedOn 宿主那条隐式样式：它的淡入淡出是 Storyboard 动画，
+            // 动画值的优先级压过样式触发器，自己在触发器里写 Opacity 根本不生效。
+            // 改从它的基样式起步，模板和宽度照旧继承，显隐只由下面的触发器管。
+            var hostScrollBar = Application.Current?.TryFindResource(typeof(ScrollBar)) as Style;
             var scrollBarStyle = new Style(typeof(ScrollBar))
             {
-                BasedOn = Application.Current?.TryFindResource(typeof(ScrollBar)) as Style
+                BasedOn = hostScrollBar?.BasedOn ?? hostScrollBar
             };
-            var scrollBarIdle = new DataTrigger
+            scrollBarStyle.Setters.Add(new Setter(UIElement.OpacityProperty, 0.0));
+            var scrollBarHover = new DataTrigger
             {
                 Binding = new Binding("IsMouseOver")
                 {
                     RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(RichTextBox), 1)
                 },
-                Value = false
+                Value = true
             };
-            scrollBarIdle.Setters.Add(new Setter(UIElement.OpacityProperty, 0.0));
-            scrollBarStyle.Triggers.Add(scrollBarIdle);
+            scrollBarHover.Setters.Add(new Setter(UIElement.OpacityProperty, 1.0));
+            scrollBarStyle.Triggers.Add(scrollBarHover);
             text.Resources.Add(typeof(ScrollBar), scrollBarStyle);
 
             // 行号列：默认收起，点右上角那个「行号」按钮才显示。单独占一列而不是塞进代码里，
