@@ -1006,12 +1006,25 @@ namespace MarkdownKit
                 Document = document
             };
 
-            // 横向滚动条要一直看得见：长行超出的部分全靠它提示「右边还有内容」，
-            // 平时透明、悬停才淡入等于没有（只能拿键盘一下下往右挪）。
-            // 外观仍取宿主那条细滚动条，见 CodeScrollBarStyle。
-            Style codeScrollBar = CodeScrollBarStyle();
-            if (codeScrollBar != null)
-                text.Resources.Add(typeof(ScrollBar), codeScrollBar);
+            // 滚动条平时隐形，鼠标进到这个代码块上才浮现；挂个只作用于自家滚动条的隐式样式，
+            // 用透明度而不是 Visibility，免得显隐时把内容宽度挤一下。
+            // 必须 BasedOn 宿主应用级的 ScrollBar 样式：RichTextBox.Resources 里的隐式样式会
+            // 完全遮住上层样式，不继承就退回系统默认的粗滚动条，跟别处对不上。
+            var scrollBarStyle = new Style(typeof(ScrollBar))
+            {
+                BasedOn = Application.Current?.TryFindResource(typeof(ScrollBar)) as Style
+            };
+            var scrollBarIdle = new DataTrigger
+            {
+                Binding = new Binding("IsMouseOver")
+                {
+                    RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(RichTextBox), 1)
+                },
+                Value = false
+            };
+            scrollBarIdle.Setters.Add(new Setter(UIElement.OpacityProperty, 0.0));
+            scrollBarStyle.Triggers.Add(scrollBarIdle);
+            text.Resources.Add(typeof(ScrollBar), scrollBarStyle);
 
             // 行号列：默认收起，点右上角那个「行号」按钮才显示。单独占一列而不是塞进代码里，
             // 这样在预览里手动选中复制拿到的仍然只有代码。
@@ -1030,30 +1043,35 @@ namespace MarkdownKit
                 IsHitTestVisible = false
             };
 
-            // 复制按钮和行号按钮单独占一列，正文少占这点宽度，换来按钮永远压不到代码上
-            var content = new Grid();
-            content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            // 行号与代码两列；按钮叠在右上角，不占正文宽度
+            var body = new Grid();
+            body.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
             Grid.SetColumn(numbers, 0);
-            content.Children.Add(numbers);
+            body.Children.Add(numbers);
 
             Grid.SetColumn(text, 1);
-            content.Children.Add(text);
+            body.Children.Add(text);
 
-            var buttons = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                HorizontalAlignment = HorizontalAlignment.Right,
-                VerticalAlignment = VerticalAlignment.Top
-            };
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal };
             buttons.Children.Add(WrapButton(document, text, noWrapWidth, codeSize));
             buttons.Children.Add(LineNumberButton(numbers, paragraph, text, codeSize));
             buttons.Children.Add(CopyButton(code, codeSize));
 
-            Grid.SetColumn(buttons, 2);
-            content.Children.Add(buttons);
+            // 浮层垫一层与代码块同色的底：按钮压住的地方代码不能透出来，否则图标会和字符叠在一起
+            var overlay = new Border
+            {
+                Background = MarkdownTheme.Markdown.CodeBackground,
+                CornerRadius = new CornerRadius(codeSize * 0.3),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Top,
+                Child = buttons
+            };
+
+            var content = new Grid();
+            content.Children.Add(body);
+            content.Children.Add(overlay);
 
             return new BlockUIContainer(new Border
             {
@@ -1094,28 +1112,6 @@ namespace MarkdownKit
                 start = i + 1;
             }
             return Math.Ceiling(widest + fontSize);
-        }
-
-        /// <summary>
-        /// 代码块用的滚动条样式：外观沿用宿主应用级的细滚动条，但去掉「平时透明、悬停才淡入」那层触发器，
-        /// 内容超出宽度时一直显出来。
-        /// 宿主那条隐式样式自己 BasedOn 一份带模板的基样式，淡入触发器挂在派生那条上；
-        /// 这里以基样式为底，再加一条不透明度恒为 1，模板里的 DynamicResource 仍然跟着主题走。
-        /// </summary>
-        private static Style _codeScrollBarStyle;
-
-        private static Style CodeScrollBarStyle()
-        {
-            // 宿主那条样式是同一个实例，模板里用的是 DynamicResource，换主题时颜色自己会跟着变，缓存一份就够
-            if (_codeScrollBarStyle != null)
-                return _codeScrollBarStyle;
-            var host = Application.Current?.TryFindResource(typeof(ScrollBar)) as Style;
-            if (host == null)
-                return null;
-            var style = new Style(typeof(ScrollBar)) { BasedOn = host.BasedOn ?? host };
-            style.Setters.Add(new Setter(UIElement.OpacityProperty, 1.0));
-            _codeScrollBarStyle = style;
-            return style;
         }
 
         /// <summary>
