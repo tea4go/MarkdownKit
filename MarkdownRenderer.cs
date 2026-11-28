@@ -3555,7 +3555,8 @@ namespace MarkdownKit
     /// 分段渲染会话：解析一次，按顶层块分批往同一个 FlowDocument 里追加。
     /// 大文档预览先同步渲染首屏，其余留到界面空闲时分步推进，避免一次排版把窗口冻住。
     /// 会话只在 UI 线程上用（返回的 FlowDocument 和元素都是 DispatcherObject）；
-    /// 渲染上下文沿用 MarkdownRenderer 的静态字段，Begin 时接管、Complete/Abort 时原样还回去。
+    /// 渲染上下文（图片基准、图片宿主、链接回调、脚注表）在每一步排版期间临时写进
+    /// MarkdownRenderer 的静态字段、结束立即还原，多个会话可交错推进，互不串台。
     /// </summary>
     public sealed class MarkdownRenderSession : IDisposable
     {
@@ -3567,22 +3568,19 @@ namespace MarkdownKit
         private readonly double _fontSize;
         private MdBlock _footnoteGroup;
 
-        // 接管前的全局渲染上下文，结束时还回去
-        private readonly string _savedBaseDir;
-        private readonly FrameworkElement _savedImageHost;
-        private readonly Action<PreviewLinkTarget> _savedLinkOpener;
-        private readonly Dictionary<int, List<Hyperlink>> _savedReferences;
-        private readonly Dictionary<int, Section> _savedItems;
+        // 本会话自己的渲染上下文，每一步排版临时写进全局、结束还原
+        private readonly string _baseDir;
+        private readonly FrameworkElement _imageHost;
+        private readonly Action<PreviewLinkTarget> _linkOpener;
+        private readonly Dictionary<int, List<Hyperlink>> _references = new Dictionary<int, List<Hyperlink>>();
+        private readonly Dictionary<int, Section> _items = new Dictionary<int, Section>();
 
         private int _index;
         private int _lastRenderedLine = -1;
         private bool _contentDone;
         private bool _completed;
-        private bool _contextRestored;
         // 上一块是分页符：下一块要另起一页（分步渲染时状态得跨 RenderNext 保留）
         private bool _pageBreakAfter;
-
-        private static MarkdownRenderSession _active;
 
         public FlowDocument Document { get { return _document; } }
 
@@ -3607,50 +3605,28 @@ namespace MarkdownKit
             _fontSize = fontSize;
             _document = MarkdownRenderer.Base(fontSize);
 
-            _savedBaseDir = MarkdownRenderer._imageBaseDir;
-            _savedImageHost = MarkdownRenderer._imageHost;
-            _savedLinkOpener = MarkdownRenderer._linkOpener;
-            _savedReferences = MarkdownRenderer._footnoteReferences;
-            _savedItems = MarkdownRenderer._footnoteItems;
-
-            MarkdownRenderer._imageBaseDir = baseDir;
-            MarkdownRenderer._imageHost = imageHost;
-            MarkdownRenderer._linkOpener = linkOpener;
-            MarkdownRenderer._footnoteReferences = new Dictionary<int, List<Hyperlink>>();
-            MarkdownRenderer._footnoteItems = new Dictionary<int, Section>();
+            _baseDir = baseDir;
+            _imageHost = imageHost;
+            _linkOpener = linkOpener;
 
             if (string.IsNullOrEmpty(markdown))
                 return;
 
-            try
-            {
-                MarkdownDocument parsed = Markdig.Markdown.Parse(markdown, MarkdownRenderer.Pipeline);
-                // 宽度标记必须对整棵树跑一次，再按顶层块分批排版
-                ImageWidthAttribute.Apply(parsed);
-                CollectOutline(parsed, _outline);
-                foreach (HeadingInfo info in _outline)
-                    _outlineByLine[info.SourceLine] = info;
-                foreach (MdBlock block in parsed)
-                    _blocks.Add(block);
-            }
-            catch
-            {
-                RestoreContext();
-                throw;
-            }
+            MarkdownDocument parsed = Markdig.Markdown.Parse(markdown, MarkdownRenderer.Pipeline);
+            // 宽度标记必须对整棵树跑一次，再按顶层块分批排版
+            ImageWidthAttribute.Apply(parsed);
+            CollectOutline(parsed, _outline);
+            foreach (HeadingInfo info in _outline)
+                _outlineByLine[info.SourceLine] = info;
+            foreach (MdBlock block in parsed)
+                _blocks.Add(block);
         }
 
-        /// <summary>开始一次分段渲染；已有未完成的会话会先作废，保证全局上下文不串。</summary>
+        /// <summary>开始一次分段渲染；上下文按步隔离，多个会话可以同时存在、交错推进。</summary>
         public static MarkdownRenderSession Begin(string markdown, double fontSize, string baseDir,
             FrameworkElement imageHost, Action<PreviewLinkTarget> linkOpener)
         {
-            MarkdownRenderSession previous = _active;
-            if (previous != null)
-                previous.Abort();
-
-            var session = new MarkdownRenderSession(markdown, fontSize, baseDir, imageHost, linkOpener);
-            _active = session;
-            return session;
+            return new MarkdownRenderSession(markdown, fontSize, baseDir, imageHost, linkOpener);
         }
 
         /// <summary>
@@ -3668,6 +3644,18 @@ namespace MarkdownKit
 
             int count = 0;
             int chars = 0;
+            // 这一步排版临时占用全局渲染上下文，结束后原样还原：
+            // 步与步之间别的文档可以照常渲染，不会互相串台
+            string outerBaseDir = MarkdownRenderer._imageBaseDir;
+            FrameworkElement outerImageHost = MarkdownRenderer._imageHost;
+            Action<PreviewLinkTarget> outerLinkOpener = MarkdownRenderer._linkOpener;
+            Dictionary<int, List<Hyperlink>> outerReferences = MarkdownRenderer._footnoteReferences;
+            Dictionary<int, Section> outerItems = MarkdownRenderer._footnoteItems;
+            MarkdownRenderer._imageBaseDir = _baseDir;
+            MarkdownRenderer._imageHost = _imageHost;
+            MarkdownRenderer._linkOpener = _linkOpener;
+            MarkdownRenderer._footnoteReferences = _references;
+            MarkdownRenderer._footnoteItems = _items;
             try
             {
                 while (_index < _blocks.Count)
@@ -3715,6 +3703,14 @@ namespace MarkdownKit
                 Abort();
                 throw;
             }
+            finally
+            {
+                MarkdownRenderer._imageBaseDir = outerBaseDir;
+                MarkdownRenderer._imageHost = outerImageHost;
+                MarkdownRenderer._linkOpener = outerLinkOpener;
+                MarkdownRenderer._footnoteReferences = outerReferences;
+                MarkdownRenderer._footnoteItems = outerItems;
+            }
 
             _contentDone = _index >= _blocks.Count;
             return _contentDone;
@@ -3735,6 +3731,17 @@ namespace MarkdownKit
                 return;
 
             RenderNext(int.MaxValue, int.MaxValue);
+            // 脚注条目与正文引用分登记在两步里，这里同样临时占用上下文再连线
+            string outerBaseDir = MarkdownRenderer._imageBaseDir;
+            FrameworkElement outerImageHost = MarkdownRenderer._imageHost;
+            Action<PreviewLinkTarget> outerLinkOpener = MarkdownRenderer._linkOpener;
+            Dictionary<int, List<Hyperlink>> outerReferences = MarkdownRenderer._footnoteReferences;
+            Dictionary<int, Section> outerItems = MarkdownRenderer._footnoteItems;
+            MarkdownRenderer._imageBaseDir = _baseDir;
+            MarkdownRenderer._imageHost = _imageHost;
+            MarkdownRenderer._linkOpener = _linkOpener;
+            MarkdownRenderer._footnoteReferences = _references;
+            MarkdownRenderer._footnoteItems = _items;
             try
             {
                 if (_footnoteGroup != null)
@@ -3747,41 +3754,28 @@ namespace MarkdownKit
             }
             finally
             {
+                MarkdownRenderer._imageBaseDir = outerBaseDir;
+                MarkdownRenderer._imageHost = outerImageHost;
+                MarkdownRenderer._linkOpener = outerLinkOpener;
+                MarkdownRenderer._footnoteReferences = outerReferences;
+                MarkdownRenderer._footnoteItems = outerItems;
                 _completed = true;
                 _contentDone = true;
-                RestoreContext();
-                if (_active == this)
-                    _active = null;
             }
         }
 
-        /// <summary>作废会话：不接脚注、不连线，只把全局上下文还回去。</summary>
+        /// <summary>作废会话：不接脚注、不连线。上下文按步隔离，没有需要归还的长期占用。</summary>
         public void Abort()
         {
             if (_completed)
                 return;
             _completed = true;
             _contentDone = true;
-            RestoreContext();
-            if (_active == this)
-                _active = null;
         }
 
         public void Dispose()
         {
             Abort();
-        }
-
-        private void RestoreContext()
-        {
-            if (_contextRestored)
-                return;
-            _contextRestored = true;
-            MarkdownRenderer._imageBaseDir = _savedBaseDir;
-            MarkdownRenderer._imageHost = _savedImageHost;
-            MarkdownRenderer._linkOpener = _savedLinkOpener;
-            MarkdownRenderer._footnoteReferences = _savedReferences;
-            MarkdownRenderer._footnoteItems = _savedItems;
         }
 
         /// <summary>
