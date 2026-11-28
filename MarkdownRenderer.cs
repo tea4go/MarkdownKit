@@ -3575,6 +3575,9 @@ namespace MarkdownKit
         private readonly Dictionary<int, List<Hyperlink>> _references = new Dictionary<int, List<Hyperlink>>();
         private readonly Dictionary<int, Section> _items = new Dictionary<int, Section>();
 
+        // 已排进文档的顶层块，按排版顺序；流式增量更新时从尾部摘掉重排
+        private readonly List<RenderedBlock> _rendered = new List<RenderedBlock>();
+
         private int _index;
         private int _lastRenderedLine = -1;
         private bool _contentDone;
@@ -3679,6 +3682,7 @@ namespace MarkdownKit
                             _pageBreakAfter = false;
                         }
                         _document.Blocks.Add(rendered);
+                        _rendered.Add(new RenderedBlock { Index = _index - 1, Block = rendered });
                         _anchors.Add(new BlockAnchor { SourceLine = block.Line, Target = rendered });
                         _lastRenderedLine = block.Line;
                         _pageBreakAfter = MarkdownRenderer.IsPageBreakBlock(block);
@@ -3714,6 +3718,115 @@ namespace MarkdownKit
 
             _contentDone = _index >= _blocks.Count;
             return _contentDone;
+        }
+
+        /// <summary>
+        /// 流式增量更新：新文本通常是在旧文本末尾追加，前缀块的源码范围没变就复用已排好的
+        /// 结果，只从第一个变化的顶层块起重排。返回 false 表示不能安全增量（内容被改写、
+        /// 带脚注或引用定义、上一步没排完等），调用方应作废本会话后整篇重排。
+        /// </summary>
+        public bool Update(string markdown)
+        {
+            if (_completed || !_contentDone || markdown == null)
+                return false;
+            // 脚注和引用定义会影响别的块的渲染，增量路径不处理
+            if (_footnoteGroup != null || _references.Count > 0)
+                return false;
+
+            MarkdownDocument parsed;
+            var blocks = new List<MdBlock>();
+            try
+            {
+                parsed = Markdig.Markdown.Parse(markdown, MarkdownRenderer.Pipeline);
+                ImageWidthAttribute.Apply(parsed);
+                foreach (MdBlock block in parsed)
+                {
+                    if (block is FootnoteGroup || block is LinkReferenceDefinitionGroup)
+                        return false;
+                    blocks.Add(block);
+                }
+            }
+            catch
+            {
+                return false;
+            }
+
+            // 未闭合的代码围栏等块在追加内容后 Span 不会更新，最后一块不能当作稳定前缀
+            int limit = Math.Min(_blocks.Count, blocks.Count);
+            if (blocks.Count > 0)
+                limit = Math.Min(limit, blocks.Count - 1);
+            int stable = 0;
+            while (stable < limit && SameBlock(_blocks[stable], blocks[stable]))
+                stable++;
+
+            while (_rendered.Count > 0 && _rendered[_rendered.Count - 1].Index >= stable)
+                RemoveLastRendered();
+
+            _blocks.Clear();
+            _blocks.AddRange(blocks);
+            _index = stable;
+            _lastRenderedLine = stable > 0 ? _blocks[stable - 1].Line : -1;
+            _pageBreakAfter = stable > 0 && MarkdownRenderer.IsPageBreakBlock(_blocks[stable - 1]);
+
+            // 大纲按新文本重建；仍存活的标题沿用原来的渲染段落
+            var targets = new Dictionary<int, Paragraph>();
+            foreach (HeadingInfo info in _outline)
+            {
+                if (info.Target != null)
+                    targets[info.SourceLine] = info.Target;
+            }
+
+            _outline.Clear();
+            _outlineByLine.Clear();
+            CollectOutline(parsed, _outline);
+            foreach (HeadingInfo info in _outline)
+            {
+                _outlineByLine[info.SourceLine] = info;
+                Paragraph target;
+                if (targets.TryGetValue(info.SourceLine, out target))
+                    info.Target = target;
+            }
+
+            _contentDone = false;
+            try
+            {
+                RenderNext(int.MaxValue, int.MaxValue);
+            }
+            catch
+            {
+                Abort();
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>两个顶层块的类型和源码范围都相同，渲染结果必然一致。</summary>
+        private static bool SameBlock(MdBlock left, MdBlock right)
+        {
+            return left.GetType() == right.GetType()
+                && left.Span.Start == right.Span.Start
+                && left.Span.End == right.Span.End;
+        }
+
+        /// <summary>从文档尾部摘掉一个已排的顶层块，连同它的锚点。</summary>
+        private void RemoveLastRendered()
+        {
+            RenderedBlock record = _rendered[_rendered.Count - 1];
+            _rendered.RemoveAt(_rendered.Count - 1);
+            _document.Blocks.Remove(record.Block);
+            for (int i = _anchors.Count - 1; i >= 0; i--)
+            {
+                if (ReferenceEquals(_anchors[i].Target, record.Block))
+                    _anchors.RemoveAt(i);
+            }
+        }
+
+        private struct RenderedBlock
+        {
+            /// <summary>在 _blocks 里的下标。</summary>
+            public int Index;
+            public WpfBlock Block;
         }
 
         /// <summary>一直渲染到 sourceLine 这一行已经排出来（含），返回是否到达目标。</summary>
